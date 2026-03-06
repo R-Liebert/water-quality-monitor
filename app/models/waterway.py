@@ -8,7 +8,8 @@ class WaterwayObservation(Base):
     id = Column(Integer, primary_key=True, index=True)
     location_name = Column(String, index=True)
     # Using SRID 4326 (WGS 84 - standard for GPS/web)
-    geom = Column(Geometry('POINT', srid=4326))
+    # Changed from POINT to MULTILINESTRING to support 1km segments
+    geom = Column(Geometry('MULTILINESTRING', srid=4326))
     
     # Copernicus data (e.g. Normalized Difference Water Index - NDWI)
     hydration_index = Column(Float, nullable=True)

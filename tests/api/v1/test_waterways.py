@@ -5,17 +5,19 @@ from app.core.config import settings
 client = TestClient(app)
 
 def test_read_root():
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "status" in response.json()
-    assert response.json()["status"] == "ok"
+    # Root redirects to /frontend/index.html
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/frontend/index.html"
 
-# Need to mock the database session for full endpoint testing,
-# but we can ensure the route is registered and returns a valid format.
-def test_read_waterways_mock_db():
-    # As it currently requires a real db connection and we haven't set up 
-    # test databases in CI/Docker yet, we verify 401/404/route existence.
+def test_read_waterways_status():
+    # Verify the actual API status endpoint
     response = client.get(f"{settings.API_V1_STR}/waterways/status")
-    # Should be 500 if DB is not running, or 200 if it is empty.
-    # Just asserting the route exists and is hit.
-    assert response.status_code in [200, 500]
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    # We should have data now because of the sync script
+    if len(data) > 0:
+        assert "location_name" in data[0]
+        assert "hydration_index" in data[0]
+        assert "status" not in data[0] # It's not in our simple demo serializer yet
