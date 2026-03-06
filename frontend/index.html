@@ -56,8 +56,7 @@
             border-radius: 2px;
             margin-right: 10px;
         }
-        /* Dark theme override for Leaflet UI */
-        .leaflet-layer,
+        
         .leaflet-control-zoom-in,
         .leaflet-control-zoom-out,
         .leaflet-control-attribution {
@@ -113,19 +112,19 @@
         <div id="loader">Loading mapping data...</div>
         
         <div class="legend" style="margin-bottom: 20px;">
-            <strong>Satellite Layers (Copernicus)</strong>
+            <strong>Map Background</strong>
             <div style="margin-top: 8px;">
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; margin-bottom: 5px;">
-                    <input type="radio" name="basemap" value="dark" checked onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    Standard Dark Map
+                    <input type="radio" name="basemap" value="satellite" checked onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    Satellite (Ground Truth)
+                </label>
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; margin-bottom: 5px;">
+                    <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    Moisture Index (NDWI)
                 </label>
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em;">
-                    <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    NDWI (Moisture Index)
-                </label>
-                <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; margin-top: 5px;">
-                    <input type="radio" name="basemap" value="raw" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    Raw Sentinel (True Color)
+                    <input type="radio" name="basemap" value="dark" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    Standard Dark Map
                 </label>
             </div>
         </div>
@@ -182,156 +181,20 @@
             center: [52.8, -2.0], // UK Center
             zoom: 6.5,
             zoomControl: false,
-            renderer: L.canvas() // Essential for rendering 50k+ lines without crashing
+            renderer: L.canvas()
         });
 
         // Basemaps
+        const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
         const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; CARTO',
             subdomains: 'abcd',
             maxZoom: 20
-        }).addTo(map);
-
-        const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
         });
 
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-        // Styling function for the GeoJSON lines based on their properties
-        function getRiverStyle(feature) {
-            const type = feature.properties.status;
-            
-            let color = '#3b82f6'; // Default Normal
-            let weight = 2.5;
-            let opacity = 0.8;
-
-            if (type === 'critical') {
-                color = '#ef4444'; // Red
-                weight = 3.5;
-                opacity = 1.0;
-            } else if (type === 'warning') {
-                color = '#f59e0b'; // Orange
-                weight = 2.5;
-                opacity = 0.9;
-            }
-
-            return {
-                color: color,
-                weight: weight,
-                opacity: opacity,
-                lineCap: 'round',
-                lineJoin: 'round',
-                smoothFactor: 0.5 
-            };
-        }
-
-        // Interaction logic for tooltips
-        function onEachRiver(feature, layer) {
-            if (feature.properties && (feature.properties.name || feature.properties.segment_id)) {
-                const props = feature.properties;
-                const riverName = props.name || "Major Waterway";
-                
-                let titleColor = '#3b82f6';
-                if (props.status === 'critical') titleColor = '#ef4444';
-                if (props.status === 'warning') titleColor = '#f59e0b';
-
-                const tooltipContent = `
-                    <div class="custom-tooltip">
-                        <div class="title" style="color: ${titleColor}">${riverName}</div>
-                        <div class="metric"><strong>Risk Score:</strong> ${props.risk_score !== null ? (props.risk_score * 100).toFixed(0) + '%' : 'N/A'}</div>
-                        <div class="reason">
-                            <strong>Assessment:</strong><br/>
-                            ${props.explanation}
-                        </div>
-                        ${props.source_url ? `
-                        <div class="reason" style="margin-top: 8px; border-top: 1px solid #333; padding-top: 4px;">
-                            <a href="${props.source_url}" target="_blank" style="color: #4db8ff; text-decoration: none; font-size: 0.75rem;">
-                                View Alert Source →
-                            </a>
-                        </div>
-                        ` : ''}
-                    </div>
-                `;
-
-                layer.bindTooltip(tooltipContent, {
-                    sticky: false, // Stabilize position so link is clickable
-                    interactive: true, // Allow mouse interaction within the box
-                    className: 'leaflet-tooltip-custom',
-                    direction: 'top',
-                    opacity: 1
-                });
-
-                // Also bind a permanent popup on click for even easier link access
-                layer.bindPopup(tooltipContent, {
-                    className: 'leaflet-tooltip-custom'
-                });
-                
-                layer.on({
-                    mouseover: function(e) {
-                        const l = e.target;
-                        l.setStyle({ opacity: 1.0, weight: 5 });
-                    },
-                    mouseout: function(e) {
-                        geojsonLayer.resetStyle(e.target);
-                    }
-                });
-            }
-        }
-
-        // High-resolution Dynamic Layer
-        let highResLayer = null;
-
-        async function updateHighResData() {
-            const zoom = map.getZoom();
-            if (zoom < 12) {
-                if (highResLayer) map.removeLayer(highResLayer);
-                if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
-                return;
-            }
-
-            // Hide the low-res static layer
-            if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
-
-            const bounds = map.getBounds();
-            const url = `/api/v1/waterways/viewport?min_lat=${bounds.getSouth()}&max_lat=${bounds.getNorth()}&min_lng=${bounds.getWest()}&max_lng=${bounds.getEast()}&zoom=${zoom}`;
-
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (highResLayer) map.removeLayer(highResLayer);
-                
-                highResLayer = L.geoJSON(data, {
-                    style: getRiverStyle,
-                    onEachFeature: onEachRiver
-                }).addTo(map);
-            } catch (e) {
-                console.error("Failed to fetch high-res segments:", e);
-            }
-        }
-
-        map.on('moveend', updateHighResData);
-
-        // Load the optimized GeoJSON overview
-        fetch('segmented_uk_rivers.geojson')
-            .then(response => response.json())
-            .then(data => {
-                const loader = document.getElementById('loader');
-                if (loader) loader.style.display = 'none';
-                
-                window.geojsonLayer = L.geoJSON(data, {
-                    style: getRiverStyle,
-                    onEachFeature: onEachRiver
-                }).addTo(map);
-            })
-            .catch(error => {
-                console.error("Error loading spatial data:", error);
-                const loader = document.getElementById('loader');
-                if (loader) loader.innerText = "Failed to load mapping data.";
-            });
-
-        // Background Layer Management
         const copernicusNdwiLayer = L.tileLayer.wms('/api/v1/copernicus/wms', {
             layers: 'NDWI',
             format: 'image/png',
@@ -341,52 +204,102 @@
             maxcc: 20
         });
 
-        const copernicusRawLayer = L.tileLayer.wms('/api/v1/copernicus/wms', {
-            layers: 'TRUE-COLOR',
-            format: 'image/png',
-            transparent: true,
-            opacity: 1.0,
-            attribution: '&copy; Copernicus Sentinel Data',
-            maxcc: 20
-        });
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        function getRiverStyle(feature) {
+            const type = feature.properties.status;
+            let color = '#3b82f6';
+            let weight = 2.5;
+            let opacity = 0.8;
+            if (type === 'critical') { color = '#ef4444'; weight = 3.5; opacity = 1.0; }
+            else if (type === 'warning') { color = '#f59e0b'; weight = 2.5; opacity = 0.9; }
+            return { color: color, weight: weight, opacity: opacity, lineCap: 'round', lineJoin: 'round', smoothFactor: 0.5 };
+        }
+
+        function onEachRiver(feature, layer) {
+            if (feature.properties && (feature.properties.name || feature.properties.segment_id)) {
+                const props = feature.properties;
+                const riverName = props.name || "Major Waterway";
+                let titleColor = '#3b82f6';
+                if (props.status === 'critical') titleColor = '#ef4444';
+                if (props.status === 'warning') titleColor = '#f59e0b';
+
+                const tooltipContent = `
+                    <div class="custom-tooltip">
+                        <div class="title" style="color: ${titleColor}">${riverName}</div>
+                        <div class="metric"><strong>Risk Score:</strong> ${props.risk_score !== null ? (props.risk_score * 100).toFixed(0) + '%' : 'N/A'}</div>
+                        <div class="reason"><strong>Assessment:</strong><br/>${props.explanation}</div>
+                        ${props.source_url ? `
+                        <div class="reason" style="margin-top: 8px; border-top: 1px solid #333; padding-top: 4px;">
+                            <a href="${props.source_url}" target="_blank" style="color: #4db8ff; text-decoration: none; font-size: 0.75rem;">View Alert Source →</a>
+                        </div>` : ''}
+                    </div>
+                `;
+                layer.bindTooltip(tooltipContent, { sticky: false, interactive: true, className: 'leaflet-tooltip-custom', direction: 'top', opacity: 1 });
+                layer.bindPopup(tooltipContent, { className: 'leaflet-tooltip-custom' });
+                layer.on({
+                    mouseover: function(e) { e.target.setStyle({ opacity: 1.0, weight: 5 }); },
+                    mouseout: function(e) { geojsonLayer.resetStyle(e.target); if (highResLayer) highResLayer.resetStyle(e.target); }
+                });
+            }
+        }
+
+        let highResLayer = null;
+        async function updateHighResData() {
+            const zoom = map.getZoom();
+            if (zoom < 12) {
+                if (highResLayer) map.removeLayer(highResLayer);
+                if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
+                return;
+            }
+            if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
+            const bounds = map.getBounds();
+            const url = `/api/v1/waterways/viewport?min_lat=${bounds.getSouth()}&max_lat=${bounds.getNorth()}&min_lng=${bounds.getWest()}&max_lng=${bounds.getEast()}&zoom=${zoom}`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (highResLayer) map.removeLayer(highResLayer);
+                highResLayer = L.geoJSON(data, { style: getRiverStyle, onEachFeature: onEachRiver }).addTo(map);
+            } catch (e) { console.error("Failed to fetch high-res segments:", e); }
+        }
+        map.on('moveend', updateHighResData);
+
+        fetch('segmented_uk_rivers.geojson')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loader').style.display = 'none';
+                window.geojsonLayer = L.geoJSON(data, { style: getRiverStyle, onEachFeature: onEachRiver }).addTo(map);
+            })
+            .catch(error => { document.getElementById('loader').innerText = "Failed to load mapping data."; });
 
         window.updateNdwiOpacity = function(value) {
-            if (copernicusNdwiLayer) copernicusNdwiLayer.setOpacity(value / 100);
-            if (copernicusRawLayer) copernicusRawLayer.setOpacity(value / 100);
+            copernicusNdwiLayer.setOpacity(value / 100);
         };
 
         window.changeBasemap = function(type) {
             const ndwiLegend = document.getElementById('ndwi-legend');
             const ndwiTimestamp = document.getElementById('ndwi-timestamp');
-            
-            // Clear dynamic layers
             if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
-            if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
-            if (map.hasLayer(copernicusRawLayer)) map.removeLayer(copernicusRawLayer);
             if (map.hasLayer(darkMap)) map.removeLayer(darkMap);
+            if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
 
-            if (type === 'dark') {
+            if (type === 'satellite') {
+                satelliteMap.addTo(map);
+                if (ndwiLegend) ndwiLegend.style.display = 'none';
+            } else if (type === 'dark') {
                 darkMap.addTo(map);
                 if (ndwiLegend) ndwiLegend.style.display = 'none';
-            } else {
+            } else if (type === 'ndwi') {
                 satelliteMap.addTo(map);
-                if (type === 'ndwi') {
-                    copernicusNdwiLayer.addTo(map);
-                    if (ndwiLegend) ndwiLegend.style.display = 'block';
-                } else {
-                    copernicusRawLayer.addTo(map);
-                    if (ndwiLegend) ndwiLegend.style.display = 'none';
-                }
-                
-                // Update timestamp
+                copernicusNdwiLayer.addTo(map);
+                if (ndwiLegend) ndwiLegend.style.display = 'block';
                 const date = new Date();
                 date.setDate(date.getDate() - 2);
                 const dateStr = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
                 if (ndwiTimestamp) ndwiTimestamp.innerText = `Latest Scan: ${dateStr} (Sentinel-2)`;
-
-                if (window.geojsonLayer) window.geojsonLayer.bringToFront();
-                if (highResLayer) highResLayer.bringToFront();
             }
+            if (window.geojsonLayer) window.geojsonLayer.bringToFront();
+            if (highResLayer) highResLayer.bringToFront();
         };
 
         document.head.insertAdjacentHTML('beforeend', '<style>.leaflet-tooltip-custom { background: transparent; border: none; box-shadow: none; }</style>');
