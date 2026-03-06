@@ -1,7 +1,3 @@
-import geopandas as gpd
-from shapely.geometry import LineString, MultiLineString
-import numpy as np
-
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,8 +17,6 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
     live_ea_stations = fetch_uk_ea_sewage_spills()
     ea_points = [Point(s['lng'], s['lat']) for s in live_ea_stations]
     
-    # Regional weather check - sample 10 major UK river basins to speed up
-    # (In a full scale system, we'd do this per segment, but for the demo we'll use regions)
     weather_basins = {
         "South West": (50.8, -3.5), "South East": (51.3, 0.5), "Midlands": (52.5, -1.8),
         "North West": (53.5, -2.5), "North East": (54.5, -1.5), "Wales": (52.3, -3.8),
@@ -42,10 +36,9 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
 
     segmented_lines = []
     segmented_data = []
-    segment_length_m = 10000 
+    segment_length_m = 2000 # 2km resolution
 
     for idx, row in gdf_metric.iterrows():
-        # ONLY keep named rivers for the demo to prevent browser crashes
         if row.get('waterway') != 'river' or row.get('name') == 'Unknown River':
             continue
             
@@ -65,12 +58,11 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
         segment_id = 0
         for line in lines:
             length = line.length
-            effective_segment_length = max(segment_length_m, length / 10) 
-            num_segments = int(np.ceil(length / effective_segment_length))
+            num_segments = int(np.ceil(length / segment_length_m))
             
             for i in range(num_segments):
-                start_dist = i * effective_segment_length
-                end_dist = min((i + 1) * effective_segment_length, length)
+                start_dist = i * segment_length_m
+                end_dist = min((i + 1) * segment_length_m, length)
                 
                 if start_dist == end_dist:
                     continue
@@ -78,20 +70,16 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
                 p1 = line.interpolate(start_dist)
                 p2 = line.interpolate(end_dist)
                 segment = LineString([p1, p2])
-                segmented_lines.append(segment)
                 
                 # Enrichment Logic: Real Data
                 center_point = segment.centroid
-                
-                # 1. Critical check (Proximity to active EA station)
                 trigger_station = None
-                for i, ea_p in enumerate(ea_points_metric):
+                for i_ea, ea_p in enumerate(ea_points_metric):
                     if center_point.distance(ea_p) < 5000: # 5km
-                        trigger_station = live_ea_stations[i]
+                        trigger_station = live_ea_stations[i_ea]
                         break
                 
-                # 2. Weather/Warning check
-                risk_score = 0.1 # base
+                risk_score = 0.1 
                 status = "normal"
                 explanation = "Water quality metrics within normal parameters."
                 source_url = None
@@ -103,12 +91,11 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
                     explanation = f"LIVE ALERT: Proximity to active Environment Agency station ({trigger_station['location_name']})."
                     source_url = f"https://environment.data.gov.uk/flood-monitoring/id/stations/{station_ref}"
                 else:
-                    # check for rain risk in basins
                     for region, precip in basin_risks.items():
                         if precip > 10.0:
                             status = "warning"
                             risk_score = 0.1 + (precip / 20.0)
-                            explanation = f"WEATHER ALERT: Heavy precipitation ({precip}mm) forecast in {region}. High risk of agricultural runoff."
+                            explanation = f"WEATHER ALERT: Heavy precipitation ({precip}mm) forecast in {region}."
                             source_url = "https://open-meteo.com/"
                             break
 
@@ -120,20 +107,21 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
                 props['explanation'] = explanation
                 props['source_url'] = source_url
                 
+                segmented_lines.append(segment)
                 segmented_data.append(props)
                 segment_id += 1
 
-    print(f"Generated {len(segmented_lines)} major evaluation zones with real-time enrichment.")
+    print(f"Generated {len(segmented_lines)} major evaluation zones with high-resolution enrichment.")
     new_gdf = gpd.GeoDataFrame(segmented_data, geometry=segmented_lines, crs="EPSG:27700")
 
-    print("Aggressively simplifying geometries for performance...")
-    new_gdf.geometry = new_gdf.geometry.simplify(200) # 200m tolerance
+    print("Simplifying geometries for performance (high-precision)...")
+    new_gdf.geometry = new_gdf.geometry.simplify(25) # 25m precision
 
     print("Projecting back to Web Mercator (EPSG:4326) for web frontend...")
     new_gdf_web = new_gdf.to_crs(epsg=4326)
 
     new_gdf_web.to_file(output_geojson_path, driver="GeoJSON")
-    print(f"Successfully saved major segmented rivers with real data to {output_geojson_path}")
+    print(f"Successfully saved major high-res segmented rivers to {output_geojson_path}")
 
 if __name__ == "__main__":
     segment_river_into_1km_zones("data/raw_uk_rivers.geojson", "data/segmented_uk_rivers.geojson")
