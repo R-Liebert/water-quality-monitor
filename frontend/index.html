@@ -225,11 +225,17 @@
                     opacity: 1
                 });
                 
-                // Highlight path on hover
+                // Highlight path on hover without bleeding outside river bounds
                 layer.on({
                     mouseover: function(e) {
                         const l = e.target;
-                        l.setStyle({ weight: 6, opacity: 1 });
+                        // To keep the color meaning while highlighting, we don't change color or thickness drastically.
+                        // We set opacity to max and ensure it's bright.
+                        l.setStyle({ 
+                            opacity: 1.0,
+                            // we just reset the dashArray to null to make sure it looks solid if it was dashed
+                            dashArray: null 
+                        });
                         if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
                             l.bringToFront();
                         }
