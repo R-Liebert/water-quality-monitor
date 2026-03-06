@@ -114,8 +114,8 @@
                     Standard Dark Map
                 </label>
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em;">
-                    <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    NDWI (Surface Water/Hydration)
+                    <input type="radio" name="basemap" value="moisture" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    Moisture Index (Surface Water/Hydration)
                 </label>
             </div>
         </div>
@@ -287,12 +287,12 @@
         const timeParam = `${startDate.toISOString().split('T')[0]}/${endDate.toISOString().split('T')[0]}`;
 
         const copernicusNdwiLayer = L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/f7f1e7e0-7c73-4c88-a8d8-ba2338d2f105', {
-            layers: 'NDWI',
+            layers: 'MOISTURE-INDEX',
             format: 'image/png',
             transparent: true,
             opacity: 0.7,
             attribution: '&copy; Copernicus Sentinel Data',
-            TIME: timeParam
+            time: timeParam
         });
 
         window.changeBasemap = function(type) {
@@ -300,7 +300,7 @@
                 if (map.hasLayer(copernicusNdwiLayer)) {
                     map.removeLayer(copernicusNdwiLayer);
                 }
-            } else if (type === 'ndwi') {
+            } else if (type === 'moisture') {
                 if (!map.hasLayer(copernicusNdwiLayer)) {
                     copernicusNdwiLayer.addTo(map);
                     copernicusNdwiLayer.bringToBack(); // Keep river vectors on top
