@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Quality Spatial Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #111;
+            color: #eee;
+        }
+        #map {
+            height: 100vh;
+            width: 100vw;
+        }
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(20, 20, 20, 0.85);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            width: 320px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #4db8ff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .legend {
+            margin-top: 20px;
+            font-size: 0.8rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .legend-line {
+            width: 24px;
+            height: 4px;
+            border-radius: 2px;
+            margin-right: 10px;
+        }
+        /* Dark theme override for Leaflet UI */
+        .leaflet-layer,
+        .leaflet-control-zoom-in,
+        .leaflet-control-zoom-out,
+        .leaflet-control-attribution {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
+        
+        /* Custom Tooltip Styling */
+        .custom-tooltip {
+            background: rgba(15, 15, 15, 0.95);
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: inherit;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            max-width: 250px;
+            white-space: normal;
+        }
+        .custom-tooltip .title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+        .custom-tooltip .metric {
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            color: #aaa;
+        }
+        .custom-tooltip .reason {
+            font-size: 0.8rem;
+            margin-top: 8px;
+            color: #ddd;
+            line-height: 1.3;
+        }
+        .leaflet-tooltip-left::before, .leaflet-tooltip-right::before {
+            border-left-color: rgba(15, 15, 15, 0.95);
+            border-right-color: rgba(15, 15, 15, 0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <h1>Water Monitor (UK)</h1>
+        
+        <div class="legend" style="margin-bottom: 20px;">
+            <strong>Satellite Layers (Copernicus)</strong>
+            <div style="margin-top: 8px;">
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; margin-bottom: 5px;">
+                    <input type="radio" name="basemap" value="dark" checked onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    Standard Dark Map
+                </label>
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em;">
+                    <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    NDWI (Surface Water/Hydration)
+                </label>
+            </div>
+        </div>
+
+        <div class="legend">
+            <strong>Waterway Status Layer</strong>
+            <div class="legend-item" style="margin-top:12px;">
+                <div class="legend-line" style="background: #ef4444; box-shadow: 0 0 8px #ef4444;"></div>
+                <span>Critical Risk (Runoff/Spill)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #f59e0b; box-shadow: 0 0 8px #f59e0b;"></div>
+                <span>Warning (Strain Detected)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #3b82f6;"></div>
+                <span>Normal / Healthy</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #6b7280; border-top: 2px dashed #999; background: transparent; height: 0;"></div>
+                <span style="color: #9ca3af;">No Data Source Active</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        const map = L.map('map', {
+            center: [52.8, -2.0], // UK Center
+            zoom: 6.5,
+            zoomControl: false
+        });
+
+        // High-contrast dark base map to make colored waterways pop
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // Styling function for the GeoJSON lines based on their properties
+        function getRiverStyle(feature) {
+            const type = feature.properties.status;
+            
+            let color = '#3b82f6'; // Default Normal
+            let weight = 3;
+            let opacity = 0.8;
+            let dashArray = null;
+
+            if (type === 'critical') {
+                color = '#ef4444'; // Red
+                weight = 4;
+                opacity = 1.0;
+            } else if (type === 'warning') {
+                color = '#f59e0b'; // Orange
+                weight = 3;
+                opacity = 0.9;
+            } else if (type === 'nodata') {
+                color = '#6b7280'; // Grey
+                weight = 1.5;
+                dashArray = '4, 4'; // Dashed line to indicate missing data
+                opacity = 0.6;
+            }
+
+            return {
+                color: color,
+                weight: weight,
+                opacity: opacity,
+                dashArray: dashArray,
+                lineCap: 'round',
+                lineJoin: 'round',
+                smoothFactor: 1.0 // Ensures Leaflet renders the high-res curves smoothly
+            };
+        }
+
+        // Interaction logic for tooltips
+        function onEachRiver(feature, layer) {
+            // Hover Tooltip setup
+            if (feature.properties && feature.properties.name) {
+                const props = feature.properties;
+                
+                let titleColor = '#3b82f6';
+                if (props.status === 'critical') titleColor = '#ef4444';
+                if (props.status === 'warning') titleColor = '#f59e0b';
+                if (props.status === 'nodata') titleColor = '#9ca3af';
+
+                const tooltipContent = `
+                    <div class="custom-tooltip">
+                        <div class="title" style="color: ${titleColor}">${props.name}</div>
+                        <div class="metric"><strong>Risk Score:</strong> ${props.risk_score !== null ? (props.risk_score * 100).toFixed(0) + '%' : 'N/A'}</div>
+                        <div class="metric"><strong>Copernicus Turbidity:</strong> ${props.turbidity || 'N/A'}</div>
+                        <div class="reason">
+                            <strong>Assessment:</strong><br/>
+                            ${props.explanation}
+                        </div>
+                    </div>
+                `;
+
+                layer.bindTooltip(tooltipContent, {
+                    sticky: true, // Follows the mouse
+                    className: 'leaflet-tooltip-custom',
+                    direction: 'auto',
+                    opacity: 1
+                });
+                
+                // Highlight path on hover
+                layer.on({
+                    mouseover: function(e) {
+                        const l = e.target;
+                        l.setStyle({ weight: 6, opacity: 1 });
+                        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                            l.bringToFront();
+                        }
+                    },
+                    mouseout: function(e) {
+                        geojsonLayer.resetStyle(e.target);
+                    }
+                });
+            }
+        }
+
+        // Load the highly detailed 1km segmented GeoJSON
+        fetch('segmented_uk_rivers.geojson')
+            .then(response => response.json())
+            .then(data => {
+                // Attach to global scope for resetStyle to work
+                window.geojsonLayer = L.geoJSON(data, {
+                    style: getRiverStyle,
+                    onEachFeature: onEachRiver
+                }).addTo(map);
+            })
+            .catch(error => console.error("Error loading spatial data:", error));
+
+        // Background Layer Management
+        // The carto dark layer was initialized at the top of the script
+        
+        // Define Copernicus WMS Layer (NDWI for hydration/surface water)
+        const copernicusNdwiLayer = L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/f7f1e7e0-7c73-4c88-a8d8-ba2338d2f105', {
+            layers: 'NDWI',
+            format: 'image/png',
+            transparent: true,
+            opacity: 0.7,
+            attribution: '&copy; Copernicus Sentinel Data'
+        });
+
+        window.changeBasemap = function(type) {
+            if (type === 'dark') {
+                if (map.hasLayer(copernicusNdwiLayer)) {
+                    map.removeLayer(copernicusNdwiLayer);
+                }
+            } else if (type === 'ndwi') {
+                if (!map.hasLayer(copernicusNdwiLayer)) {
+                    copernicusNdwiLayer.addTo(map);
+                    copernicusNdwiLayer.bringToBack(); // Keep river vectors on top
+                }
+            }
+        };
+
+        // Remove the default transparent background from the sticky tooltip
+        document.head.insertAdjacentHTML('beforeend', '<style>.leaflet-tooltip-custom { background: transparent; border: none; box-shadow: none; }</style>');
+
+    </script>
+</body>
+</html>
