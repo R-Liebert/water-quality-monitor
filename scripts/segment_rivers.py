@@ -81,4 +81,4 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
     print(f"Successfully saved 1km segmented rivers to {output_geojson_path}")
 
 if __name__ == "__main__":
-    segment_river_into_1km_zones("/app/data/raw_uk_rivers.geojson", "/app/data/segmented_uk_rivers.geojson")
+    segment_river_into_1km_zones("data/raw_uk_rivers.geojson", "data/segmented_uk_rivers.geojson")
