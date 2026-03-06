@@ -19,12 +19,14 @@ function setup() {
 function evaluatePixel(sample) {
   let ndwi = (sample.B03 - sample.B08) / (sample.B03 + sample.B08);
   
-  // Water: Deep Professional Blue
-  if (ndwi > 0.2) return [0, 0.1, 0.6, 0.9];
-  // Saturated/Moist: Sharp Cyan
-  if (ndwi > 0.0) return [0, 0.8, 0.9, 0.6];
+  // Clear/Deep Water (NDWI > 0.5)
+  if (ndwi > 0.5) return [0, 0, 0.5, 0.9];
+  // Shallow/Turbid Water (NDWI 0.2 - 0.5)
+  if (ndwi > 0.2) return [0, 0.4, 0.8, 0.8];
+  // Flooding / Moist Land (NDWI 0.0 - 0.2)
+  if (ndwi > 0.0) return [0.2, 0.8, 1.0, 0.6];
   
-  // Everything else transparent
+  // Non-water features (NDWI <= 0)
   return [0, 0, 0, 0];
 }
 """

@@ -131,21 +131,25 @@
         </div>
 
         <div class="legend" id="ndwi-legend" style="margin-bottom: 20px; display: none;">
-            <strong>Spectral Data (Sentinel-2)</strong>
-            <div style="margin-top: 10px; height: 12px; width: 100%; background: linear-gradient(to right, #ffffff, #76d7ea, #00008b); border-radius: 6px;"></div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; margin-top: 4px;">
-                <span>Dry</span>
-                <span>Saturated</span>
-                <span>Water</span>
+            <strong>Moisture Index (NDWI)</strong>
+            <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 10px;">
+                <div style="display: flex; align-items: center; font-size: 0.75rem;">
+                    <div style="width: 12px; height: 12px; background: #000080; border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Clear / Deep Water (> 0.5)</span>
+                </div>
+                <div style="display: flex; align-items: center; font-size: 0.75rem;">
+                    <div style="width: 12px; height: 12px; background: #0066cc; border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Shallow / Turbid (0.2 - 0.5)</span>
+                </div>
+                <div style="display: flex; align-items: center; font-size: 0.75rem;">
+                    <div style="width: 12px; height: 12px; background: #33ccff; border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Moist Land / Flood (0.0 - 0.2)</span>
+                </div>
             </div>
             
             <div style="margin-top: 15px;">
                 <label style="font-size: 0.75rem; color: #aaa; display: block; margin-bottom: 5px;">Data Overlay Opacity:</label>
                 <input type="range" min="0" max="100" value="60" style="width: 100%; cursor: pointer;" oninput="updateNdwiOpacity(this.value)">
-                <div style="display: flex; justify-content: space-between; font-size: 0.6rem; color: #666; margin-top: 2px;">
-                    <span>Satellite Only</span>
-                    <span>Pure NDWI</span>
-                </div>
             </div>
 
             <div id="ndwi-timestamp" style="font-size: 0.65rem; color: #4db8ff; margin-top: 12px; font-style: italic; border-top: 1px solid #333; padding-top: 8px;">
