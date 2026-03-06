@@ -261,7 +261,41 @@
             }
         }
 
-        // Load the optimized GeoJSON
+        // High-resolution Dynamic Layer
+        let highResLayer = null;
+
+        async function updateHighResData() {
+            const zoom = map.getZoom();
+            if (zoom < 12) {
+                if (highResLayer) map.removeLayer(highResLayer);
+                if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
+                return;
+            }
+
+            // Hide the low-res static layer
+            if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
+
+            const bounds = map.getBounds();
+            const url = `/api/v1/waterways/viewport?min_lat=${bounds.getSouth()}&max_lat=${bounds.getNorth()}&min_lng=${bounds.getWest()}&max_lng=${bounds.getEast()}&zoom=${zoom}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (highResLayer) map.removeLayer(highResLayer);
+                
+                highResLayer = L.geoJSON(data, {
+                    style: getRiverStyle,
+                    onEachFeature: onEachRiver
+                }).addTo(map);
+            } catch (e) {
+                console.error("Failed to fetch high-res segments:", e);
+            }
+        }
+
+        map.on('moveend', updateHighResData);
+
+        // Load the optimized GeoJSON overview
         fetch('segmented_uk_rivers.geojson')
             .then(response => response.json())
             .then(data => {
