@@ -209,6 +209,13 @@
                             <strong>Assessment:</strong><br/>
                             ${props.explanation}
                         </div>
+                        ${props.source_url ? `
+                        <div class="reason" style="margin-top: 8px; border-top: 1px solid #333; padding-top: 4px;">
+                            <a href="${props.source_url}" target="_blank" style="color: #4db8ff; text-decoration: none; font-size: 0.75rem;">
+                                View Alert Source →
+                            </a>
+                        </div>
+                        ` : ''}
                     </div>
                 `;
 

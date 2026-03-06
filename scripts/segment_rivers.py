@@ -84,34 +84,32 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
                 center_point = segment.centroid
                 
                 # 1. Critical check (Proximity to active EA station)
-                # Find if any EA spill/flood station is within 5km of this segment
-                is_critical = False
-                for ea_p in ea_points_metric:
+                trigger_station = None
+                for i, ea_p in enumerate(ea_points_metric):
                     if center_point.distance(ea_p) < 5000: # 5km
-                        is_critical = True
+                        trigger_station = live_ea_stations[i]
                         break
                 
                 # 2. Weather/Warning check
-                # Check nearest basin weather
-                # Simple lat/lng check on original row for speed
-                lat, lng = row.geometry.centroid.xy # (this is rough but works for demo)
                 risk_score = 0.1 # base
                 status = "normal"
                 explanation = "Water quality metrics within normal parameters."
+                source_url = None
                 
-                if is_critical:
+                if trigger_station:
                     status = "critical"
                     risk_score = 0.95
-                    explanation = "LIVE ALERT: Proximity to active Environment Agency discharge/flood station."
+                    station_ref = trigger_station.get('station_reference', '')
+                    explanation = f"LIVE ALERT: Proximity to active Environment Agency station ({trigger_station['location_name']})."
+                    source_url = f"https://environment.data.gov.uk/flood-monitoring/id/stations/{station_ref}"
                 else:
                     # check for rain risk in basins
-                    # (we'll just use a simple lookup for demo speed)
-                    # if a region is > 10mm, mark as warning
                     for region, precip in basin_risks.items():
                         if precip > 10.0:
                             status = "warning"
                             risk_score = 0.1 + (precip / 20.0)
-                            explanation = f"WEATHER ALERT: Heavy precipitation ({precip}mm) forecast. High risk of agricultural runoff."
+                            explanation = f"WEATHER ALERT: Heavy precipitation ({precip}mm) forecast in {region}. High risk of agricultural runoff."
+                            source_url = "https://open-meteo.com/"
                             break
 
                 props = row.to_dict()
@@ -120,6 +118,7 @@ def segment_river_into_1km_zones(input_geojson_path, output_geojson_path):
                 props['status'] = status
                 props['risk_score'] = risk_score
                 props['explanation'] = explanation
+                props['source_url'] = source_url
                 
                 segmented_data.append(props)
                 segment_id += 1
