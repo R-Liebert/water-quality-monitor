@@ -127,14 +127,24 @@
         </div>
 
         <div class="legend" id="ndwi-legend" style="margin-bottom: 20px; display: none;">
-            <strong>Moisture Index (NDWI)</strong>
+            <strong>Spectral Data (Sentinel-2)</strong>
             <div style="margin-top: 10px; height: 12px; width: 100%; background: linear-gradient(to right, #ffffff, #76d7ea, #00008b); border-radius: 6px;"></div>
             <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; margin-top: 4px;">
                 <span>Dry</span>
                 <span>Saturated</span>
                 <span>Water</span>
             </div>
-            <div id="ndwi-timestamp" style="font-size: 0.65rem; color: #4db8ff; margin-top: 8px; font-style: italic;">
+            
+            <div style="margin-top: 15px;">
+                <label style="font-size: 0.75rem; color: #aaa; display: block; margin-bottom: 5px;">Data Overlay Opacity:</label>
+                <input type="range" min="0" max="100" value="60" style="width: 100%; cursor: pointer;" oninput="updateNdwiOpacity(this.value)">
+                <div style="display: flex; justify-content: space-between; font-size: 0.6rem; color: #666; margin-top: 2px;">
+                    <span>Satellite Only</span>
+                    <span>Pure NDWI</span>
+                </div>
+            </div>
+
+            <div id="ndwi-timestamp" style="font-size: 0.65rem; color: #4db8ff; margin-top: 12px; font-style: italic; border-top: 1px solid #333; padding-top: 8px;">
                 Latest Scan: Loading...
             </div>
         </div>
@@ -321,6 +331,12 @@
             opacity: 0.6,
             attribution: '&copy; Copernicus Sentinel Data'
         });
+
+        window.updateNdwiOpacity = function(value) {
+            if (copernicusNdwiLayer) {
+                copernicusNdwiLayer.setOpacity(value / 100);
+            }
+        };
 
         window.changeBasemap = function(type) {
             const ndwiLegend = document.getElementById('ndwi-legend');
