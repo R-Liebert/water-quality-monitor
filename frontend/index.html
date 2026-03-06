@@ -147,6 +147,13 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
+        const map = L.map('map', {
+            center: [52.8, -2.0], // UK Center
+            zoom: 6.5,
+            zoomControl: false,
+            renderer: L.canvas() // Essential for rendering 50k+ lines without crashing
+        });
+
         // Basemaps
         const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; CARTO',
