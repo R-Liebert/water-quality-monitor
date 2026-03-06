@@ -12,20 +12,17 @@ NDWI_EVALSCRIPT = """
 //VERSION=3
 function setup() {
   return {
-    input: ["B03", "B08", "CLM"],
+    input: ["B03", "B08"],
     output: { bands: 4 }
   };
 }
 function evaluatePixel(sample) {
   let ndwi = (sample.B03 - sample.B08) / (sample.B03 + sample.B08);
   
-  // Cloud mask check (CLM: 0=clear, 1=cloud, 2=shadow)
-  if (sample.CLM > 0) return [0, 0, 0, 0];
-
-  // Water: Deep Blue
-  if (ndwi > 0.2) return [0, 0.2, 0.8, 0.8];
-  // High Moisture: Cyan
-  if (ndwi > 0.0) return [0.2, 0.8, 1.0, 0.5];
+  // Water: Deep Professional Blue
+  if (ndwi > 0.2) return [0, 0.1, 0.6, 0.9];
+  // Saturated/Moist: Sharp Cyan
+  if (ndwi > 0.0) return [0, 0.8, 0.9, 0.6];
   
   // Everything else transparent
   return [0, 0, 0, 0];
@@ -59,6 +56,8 @@ async def proxy_wms(request: Request):
     width = int(params.get("WIDTH", 256))
     height = int(params.get("HEIGHT", 256))
     crs = params.get("SRS") or params.get("CRS", "EPSG:3857")
+    # Convert EPSG:3857 to 3857
+    crs_code = crs.split(":")[-1]
     
     layer_name = params.get("LAYERS", "NDWI")
     evalscript = NDWI_EVALSCRIPT if layer_name == "NDWI" else TRUE_COLOR_EVALSCRIPT
@@ -68,7 +67,7 @@ async def proxy_wms(request: Request):
         "input": {
             "bounds": {
                 "bbox": bbox,
-                "properties": { "crs": f"http://www.opengis.net/def/crs/OGC/1.3/{crs}" }
+                "properties": { "crs": f"http://www.opengis.net/def/crs/EPSG/0/{crs_code}" }
             },
             "data": [{
                 "type": "sentinel-2-l2a",
