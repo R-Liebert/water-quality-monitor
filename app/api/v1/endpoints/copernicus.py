@@ -2,29 +2,37 @@ from fastapi import APIRouter, Depends, Query, Response, Request
 from app.core.config import settings
 from app.services.copernicus_service import copernicus_service
 import httpx
-import base64
+import json
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
-# Evalscript for NDWI
+# High-quality NDWI Evalscript with Alpha Transparency
 NDWI_EVALSCRIPT = """
 //VERSION=3
 function setup() {
   return {
-    input: ["B03", "B08"],
-    output: { bands: 3 }
+    input: ["B03", "B08", "CLM"],
+    output: { bands: 4 }
   };
 }
 function evaluatePixel(sample) {
   let ndwi = (sample.B03 - sample.B08) / (sample.B03 + sample.B08);
-  // Map NDWI to a blue-ish ramp
-  if (ndwi > 0.2) return [0, 0, 0.5 + ndwi/2]; // Water
-  if (ndwi > 0) return [0.5, 0.8, 1]; // Saturated
-  return [1, 1, 1]; // Dry
+  
+  // Cloud mask check (CLM: 0=clear, 1=cloud, 2=shadow)
+  if (sample.CLM > 0) return [0, 0, 0, 0];
+
+  // Water: Deep Blue
+  if (ndwi > 0.2) return [0, 0.2, 0.8, 0.8];
+  // High Moisture: Cyan
+  if (ndwi > 0.0) return [0.2, 0.8, 1.0, 0.5];
+  
+  // Everything else transparent
+  return [0, 0, 0, 0];
 }
 """
 
-# Evalscript for True Color
+# True Color Evalscript for debugging
 TRUE_COLOR_EVALSCRIPT = """
 //VERSION=3
 function setup() {
@@ -46,30 +54,57 @@ async def proxy_wms(request: Request):
     if not token:
         return Response(content="Authentication Failed", status_code=401)
 
-    # Use the Universal CDSE endpoint (no Instance ID needed if using EVALSCRIPT)
-    url = "https://sh.dataspace.copernicus.eu/ogc/wms/default"
+    # Parse WMS parameters to build Process API request
+    bbox = [float(x) for x in params.get("BBOX", "").split(",")]
+    width = int(params.get("WIDTH", 256))
+    height = int(params.get("HEIGHT", 256))
+    crs = params.get("SRS") or params.get("CRS", "EPSG:3857")
     
-    # Select evalscript based on requested layer
     layer_name = params.get("LAYERS", "NDWI")
     evalscript = NDWI_EVALSCRIPT if layer_name == "NDWI" else TRUE_COLOR_EVALSCRIPT
-    
-    # Inject our dynamic configuration
-    params["EVALSCRIPT"] = base64.b64encode(evalscript.encode()).decode()
-    params["LAYERS"] = "S2L2A" # Standard Sentinel-2 L2A collection
-    
-    if "TIME" not in params:
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        thirty_days_ago = now - timedelta(days=30)
-        params["TIME"] = f"{thirty_days_ago.date().isoformat()}/{now.date().isoformat()}"
-    
-    if "MAXCC" not in params:
-        params["MAXCC"] = "20"
+
+    # Build the Process API JSON payload
+    payload = {
+        "input": {
+            "bounds": {
+                "bbox": bbox,
+                "properties": { "crs": f"http://www.opengis.net/def/crs/OGC/1.3/{crs}" }
+            },
+            "data": [{
+                "type": "sentinel-2-l2a",
+                "dataFilter": {
+                    "timeRange": {
+                        "from": (datetime.now() - timedelta(days=30)).isoformat() + "Z",
+                        "to": datetime.now().isoformat() + "Z"
+                    },
+                    "mosaickingOrder": "mostRecent",
+                    "maxCloudCoverage": 20
+                }
+            }]
+        },
+        "output": {
+            "width": width,
+            "height": height,
+            "responses": [{ "identifier": "default", "format": { "type": "image/png" } }]
+        },
+        "evalscript": evalscript
+    }
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(url, params=params, headers={"Authorization": f"Bearer {token}"})
-            return Response(content=response.content, media_type=response.headers.get("content-type"))
+            url = "https://sh.dataspace.copernicus.eu/api/v1/process"
+            response = await client.post(
+                url, 
+                json=payload, 
+                headers={"Authorization": f"Bearer {token}", "Accept": "image/png"},
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                print(f"Copernicus Error ({response.status_code}): {response.text}")
+                return Response(content=response.content, status_code=response.status_code)
+                
+            return Response(content=response.content, media_type="image/png")
         except Exception as e:
             return Response(content=str(e), status_code=500)
 
