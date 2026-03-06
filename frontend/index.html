@@ -126,6 +126,16 @@
             </div>
         </div>
 
+        <div class="legend" id="ndwi-legend" style="margin-bottom: 20px; display: none;">
+            <strong>Moisture Index (NDWI)</strong>
+            <div style="margin-top: 10px; height: 12px; width: 100%; background: linear-gradient(to right, #ffffd4, #fed98e, #fe9929, #d95f0e, #993404); border-radius: 6px;"></div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; margin-top: 4px;">
+                <span>Dry Soil</span>
+                <span>Saturation</span>
+                <span>Open Water</span>
+            </div>
+        </div>
+
         <div class="legend">
             <strong>Waterway Status Layer</strong>
             <div class="legend-item" style="margin-top:12px;">
@@ -276,14 +286,17 @@
         });
 
         window.changeBasemap = function(type) {
+            const ndwiLegend = document.getElementById('ndwi-legend');
             if (type === 'dark') {
                 if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
                 if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
                 darkMap.addTo(map);
+                if (ndwiLegend) ndwiLegend.style.display = 'none';
             } else if (type === 'ndwi') {
                 if (map.hasLayer(darkMap)) map.removeLayer(darkMap);
                 satelliteMap.addTo(map);
                 copernicusNdwiLayer.addTo(map);
+                if (ndwiLegend) ndwiLegend.style.display = 'block';
                 // Ensure river vectors stay on top
                 if (window.geojsonLayer) window.geojsonLayer.bringToFront();
             }
