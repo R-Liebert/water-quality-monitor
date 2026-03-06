@@ -99,12 +99,18 @@
             border-left-color: rgba(15, 15, 15, 0.95);
             border-right-color: rgba(15, 15, 15, 0.95);
         }
+        #loader {
+            font-size: 0.8rem;
+            color: #4db8ff;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
 
     <div id="ui-panel">
         <h1>Water Monitor (UK)</h1>
+        <div id="loader">Loading mapping data...</div>
         
         <div class="legend" style="margin-bottom: 20px;">
             <strong>Satellite Layers (Copernicus)</strong>
@@ -134,10 +140,6 @@
                 <div class="legend-line" style="background: #3b82f6;"></div>
                 <span>Normal / Healthy</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-line" style="background: #6b7280; border-top: 2px dashed #999; background: transparent; height: 0;"></div>
-                <span style="color: #9ca3af;">No Data Source Active</span>
-            </div>
         </div>
     </div>
 
@@ -148,7 +150,8 @@
         const map = L.map('map', {
             center: [52.8, -2.0], // UK Center
             zoom: 6.5,
-            zoomControl: false
+            zoomControl: false,
+            renderer: L.canvas() // Essential for rendering 50k+ lines without crashing
         });
 
         // High-contrast dark base map to make colored waterways pop
@@ -165,80 +168,68 @@
             const type = feature.properties.status;
             
             let color = '#3b82f6'; // Default Normal
-            let weight = 3;
+            let weight = 2.5;
             let opacity = 0.8;
-            let dashArray = null;
 
             if (type === 'critical') {
                 color = '#ef4444'; // Red
-                weight = 4;
+                weight = 3.5;
                 opacity = 1.0;
             } else if (type === 'warning') {
                 color = '#f59e0b'; // Orange
-                weight = 3;
+                weight = 2.5;
                 opacity = 0.9;
-            } else if (type === 'nodata') {
-                color = '#6b7280'; // Grey
-                weight = 1.5;
-                dashArray = '4, 4'; // Dashed line to indicate missing data
-                opacity = 0.6;
             }
 
             return {
                 color: color,
                 weight: weight,
                 opacity: opacity,
-                dashArray: dashArray,
                 lineCap: 'round',
                 lineJoin: 'round',
-                smoothFactor: 1.0 // Ensures Leaflet renders the high-res curves smoothly
+                smoothFactor: 0.5 
             };
         }
 
         // Interaction logic for tooltips
         function onEachRiver(feature, layer) {
-            // Hover Tooltip setup
-            if (feature.properties && feature.properties.name) {
+            if (feature.properties && (feature.properties.name || feature.properties.segment_id)) {
                 const props = feature.properties;
+                const riverName = props.name || "Major Waterway";
                 
                 let titleColor = '#3b82f6';
                 if (props.status === 'critical') titleColor = '#ef4444';
                 if (props.status === 'warning') titleColor = '#f59e0b';
-                if (props.status === 'nodata') titleColor = '#9ca3af';
 
                 const tooltipContent = `
                     <div class="custom-tooltip">
-                        <div class="title" style="color: ${titleColor}">${props.name}</div>
+                        <div class="title" style="color: ${titleColor}">${riverName}</div>
                         <div class="metric"><strong>Risk Score:</strong> ${props.risk_score !== null ? (props.risk_score * 100).toFixed(0) + '%' : 'N/A'}</div>
-                        <div class="metric"><strong>Copernicus Turbidity:</strong> ${props.turbidity || 'N/A'}</div>
                         <div class="reason">
                             <strong>Assessment:</strong><br/>
                             ${props.explanation}
                         </div>
+                        ${props.source_url ? `
+                        <div class="reason" style="margin-top: 8px; border-top: 1px solid #333; padding-top: 4px;">
+                            <a href="${props.source_url}" target="_blank" style="color: #4db8ff; text-decoration: none; font-size: 0.75rem;">
+                                View Alert Source →
+                            </a>
+                        </div>
+                        ` : ''}
                     </div>
                 `;
 
                 layer.bindTooltip(tooltipContent, {
-                    sticky: true, // Follows the mouse
+                    sticky: true,
                     className: 'leaflet-tooltip-custom',
                     direction: 'auto',
                     opacity: 1
                 });
                 
-                // Highlight path on hover without bleeding outside river bounds
                 layer.on({
                     mouseover: function(e) {
                         const l = e.target;
-                        // To keep the color meaning while highlighting, we don't change color or thickness drastically.
-                        // We set opacity to max and ensure it's bright.
-                        l.setStyle({ 
-                            opacity: 1.0,
-                            // we just reset the dashArray to null to make sure it looks solid if it was dashed
-                            dashArray: null 
-                        });
-                        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-                            l.bringToFront();
-                        }
+                        l.setStyle({ opacity: 1.0, weight: 5 });
                     },
                     mouseout: function(e) {
                         geojsonLayer.resetStyle(e.target);
@@ -247,45 +238,25 @@
             }
         }
 
-        // Load global rivers as a baseline background layer
-        fetch('global_rivers.geojson')
-            .then(response => response.json())
-            .then(data => {
-                L.geoJSON(data, {
-                    style: {
-                        color: '#1e3a8a', // A deep, subtle blue
-                        weight: 1.5,
-                        opacity: 0.6,
-                        smoothFactor: 1.5
-                    },
-                    interactive: false // Don't block hover events for the detailed layers
-                }).addTo(map);
-            })
-            .catch(error => console.error("Error loading global rivers data:", error));
-
-        // Load the highly detailed 1km segmented GeoJSON for the active region (UK)
+        // Load the optimized GeoJSON
         fetch('segmented_uk_rivers.geojson')
             .then(response => response.json())
             .then(data => {
-                // Attach to global scope for resetStyle to work
+                const loader = document.getElementById('loader');
+                if (loader) loader.style.display = 'none';
+                
                 window.geojsonLayer = L.geoJSON(data, {
                     style: getRiverStyle,
                     onEachFeature: onEachRiver
                 }).addTo(map);
             })
-            .catch(error => console.error("Error loading spatial data:", error));
+            .catch(error => {
+                console.error("Error loading spatial data:", error);
+                const loader = document.getElementById('loader');
+                if (loader) loader.innerText = "Failed to load mapping data.";
+            });
 
         // Background Layer Management
-        // The carto dark layer was initialized at the top of the script
-        
-        // Define Copernicus WMS Layer (NDWI for hydration/surface water)
-
-        // Ensure we fetch the most recent data
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setMonth(endDate.getMonth() - 6);
-        const timeParam = `${startDate.toISOString().split('T')[0]}/${endDate.toISOString().split('T')[0]}`;
-
         const copernicusNdwiLayer = L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/f7f1e7e0-7c73-4c88-a8d8-ba2338d2f105', {
             layers: 'MOISTURE-INDEX',
             format: 'image/png',
@@ -293,6 +264,7 @@
             opacity: 0.7,
             attribution: '&copy; Copernicus Sentinel Data',
             time: timeParam
+            attribution: '&copy; Copernicus Sentinel Data'
         });
 
         window.changeBasemap = function(type) {
@@ -303,14 +275,12 @@
             } else if (type === 'moisture') {
                 if (!map.hasLayer(copernicusNdwiLayer)) {
                     copernicusNdwiLayer.addTo(map);
-                    copernicusNdwiLayer.bringToBack(); // Keep river vectors on top
+                    copernicusNdwiLayer.bringToBack();
                 }
             }
         };
 
-        // Remove the default transparent background from the sticky tooltip
         document.head.insertAdjacentHTML('beforeend', '<style>.leaflet-tooltip-custom { background: transparent; border: none; box-shadow: none; }</style>');
-
     </script>
 </body>
 </html>
