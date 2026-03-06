@@ -121,7 +121,11 @@
                 </label>
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em;">
                     <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    NDWI (Surface Water/Hydration)
+                    NDWI (Moisture Index)
+                </label>
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; margin-top: 5px;">
+                    <input type="radio" name="basemap" value="raw" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    Raw Sentinel (True Color)
                 </label>
             </div>
         </div>
@@ -333,35 +337,51 @@
             maxcc: 20
         });
 
+        const copernicusRawLayer = L.tileLayer.wms('/api/v1/copernicus/wms', {
+            layers: 'TRUE-COLOR',
+            format: 'image/png',
+            transparent: true,
+            opacity: 1.0,
+            attribution: '&copy; Copernicus Sentinel Data',
+            maxcc: 20
+        });
+
         window.updateNdwiOpacity = function(value) {
-            if (copernicusNdwiLayer) {
-                copernicusNdwiLayer.setOpacity(value / 100);
-            }
+            if (copernicusNdwiLayer) copernicusNdwiLayer.setOpacity(value / 100);
+            if (copernicusRawLayer) copernicusRawLayer.setOpacity(value / 100);
         };
 
         window.changeBasemap = function(type) {
             const ndwiLegend = document.getElementById('ndwi-legend');
             const ndwiTimestamp = document.getElementById('ndwi-timestamp');
             
+            // Clear dynamic layers
+            if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
+            if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
+            if (map.hasLayer(copernicusRawLayer)) map.removeLayer(copernicusRawLayer);
+            if (map.hasLayer(darkMap)) map.removeLayer(darkMap);
+
             if (type === 'dark') {
-                if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
-                if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
                 darkMap.addTo(map);
                 if (ndwiLegend) ndwiLegend.style.display = 'none';
-            } else if (type === 'ndwi') {
-                if (map.hasLayer(darkMap)) map.removeLayer(darkMap);
+            } else {
                 satelliteMap.addTo(map);
-                copernicusNdwiLayer.addTo(map);
-                if (ndwiLegend) ndwiLegend.style.display = 'block';
+                if (type === 'ndwi') {
+                    copernicusNdwiLayer.addTo(map);
+                    if (ndwiLegend) ndwiLegend.style.display = 'block';
+                } else {
+                    copernicusRawLayer.addTo(map);
+                    if (ndwiLegend) ndwiLegend.style.display = 'none';
+                }
                 
-                // Update timestamp to represent the latest Sentinel-2 pass (usually 1-3 days ago)
+                // Update timestamp
                 const date = new Date();
-                date.setDate(date.getDate() - 2); // 2 days ago is a safe 'latest' proxy
+                date.setDate(date.getDate() - 2);
                 const dateStr = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
                 if (ndwiTimestamp) ndwiTimestamp.innerText = `Latest Scan: ${dateStr} (Sentinel-2)`;
 
-                // Ensure river vectors stay on top
                 if (window.geojsonLayer) window.geojsonLayer.bringToFront();
+                if (highResLayer) highResLayer.bringToFront();
             }
         };
 
