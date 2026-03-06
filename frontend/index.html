@@ -324,12 +324,19 @@
             });
 
         // Background Layer Management
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+        const timeParam = `${thirtyDaysAgo.toISOString().split('T')[0]}/${now.toISOString().split('T')[0]}`;
+
         const copernicusNdwiLayer = L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/f7f1e7e0-7c73-4c88-a8d8-ba2338d2f105', {
             layers: 'NDWI',
             format: 'image/png',
             transparent: true,
             opacity: 0.6,
-            attribution: '&copy; Copernicus Sentinel Data'
+            attribution: '&copy; Copernicus Sentinel Data',
+            time: timeParam,
+            maxcc: 20, // Only show tiles with < 20% cloud cover
+            mosaickingOrder: 'mostRecent' // Prioritize the newest clear data
         });
 
         window.updateNdwiOpacity = function(value) {

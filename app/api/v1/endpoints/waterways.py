@@ -18,43 +18,41 @@ async def get_high_res_viewport(
     Dynamically generates river segments for the current viewport.
     Resolution increases as the user zooms in.
     """
-    # Determine segment length based on zoom
-    # Zoom 12 -> 500m, Zoom 15+ -> 25m
+    # Determine segment length based on zoom (IN METERS for SRID 4326)
     if zoom >= 15:
-        seg_len = 0.00025 # ~25m in degrees (rough)
+        seg_len = 25      # 25m segments
     elif zoom >= 13:
-        seg_len = 0.001   # ~100m
+        seg_len = 100     # 100m segments
     else:
-        seg_len = 0.005   # ~500m
+        seg_len = 500     # 500m segments
 
     # Raw SQL for heavy spatial lifting in PostGIS
-    # 1. Select rivers in bounding box
-    # 2. Use ST_Segmentize to add vertices
-    # 3. Use ST_DumpSegments to split into individual lines
+    # ST_Segmentize uses meters for geographic coordinates (4326)
     sql = text(f"""
         WITH clipped_rivers AS (
-            SELECT name, ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
+            SELECT location_name as name, ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
             FROM waterway_observations
             WHERE geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
         ),
         segmented AS (
-            SELECT name, (ST_DumpSegments(ST_Segmentize(geom, :seg_len))).geom as segment_geom
+            SELECT name, (ST_DumpSegments(ST_Segmentize(geom::geography, :seg_len)::geometry)).geom as segment_geom
             FROM clipped_rivers
             WHERE geom IS NOT NULL
         )
         SELECT jsonb_build_object(
             'type', 'FeatureCollection',
-            'features', jsonb_agg(
+            'features', COALESCE(jsonb_agg(
                 jsonb_build_object(
                     'type', 'Feature',
                     'geometry', ST_AsGeoJSON(segment_geom)::jsonb,
                     'properties', jsonb_build_object(
                         'name', name,
                         'status', 'normal',
-                        'risk_score', 0.1
+                        'risk_score', 0.1,
+                        'explanation', 'High-resolution telemetry active.'
                     )
                 )
-            )
+            ), '[]'::jsonb)
         )
         FROM segmented
     """)
