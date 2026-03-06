@@ -47,24 +47,52 @@ def fetch_copernicus_data():
 
 import asyncio
 from app.services.ingest_weather import fetch_live_precipitation_forecast, calculate_runoff_risk
+from app.db.session import AsyncSessionLocal
+from app.models.waterway import WaterwayObservation
+from sqlalchemy import select, func
+
+async def process_weather_and_update_db():
+    print("Connecting to DB to update weather risk scores...")
+    updates = 0
+    try:
+        async with AsyncSessionLocal() as session:
+            # For demonstration, limit to 50 segments to respect API limits
+            query = select(
+                WaterwayObservation, 
+                func.ST_Y(WaterwayObservation.geom).label('lat'), 
+                func.ST_X(WaterwayObservation.geom).label('lng')
+            ).limit(50)
+            
+            result = await session.execute(query)
+            rows = result.all()
+            
+            for obs, lat, lng in rows:
+                if lat and lng:
+                    max_precip = await fetch_live_precipitation_forecast(lat, lng)
+                    risk_score = calculate_runoff_risk(max_precip)
+                    obs.runoff_risk_score = risk_score
+                    updates += 1
+                    
+            if updates > 0:
+                await session.commit()
+                print(f"Successfully updated {updates} waterway segments with new runoff risk scores.")
+            else:
+                print("No waterway segments found to update.")
+                
+    except Exception as e:
+        print(f"Failed to update weather risk scores: {e}")
+        
+    return updates
 
 @celery_app.task
 def fetch_weather_and_calculate_risk():
     """Live task for weather ingestion and risk model"""
     print("Fetching live Open-Meteo precipitation data for agricultural zones...")
     
-    # Coordinates for a major UK agricultural zone near the River Severn for demonstration
-    test_lat, test_lng = 52.1, -2.2 
+    # Run the async fetcher and db updater inside the synchronous celery worker
+    updates = asyncio.run(process_weather_and_update_db())
     
-    # Run the async fetcher inside the synchronous celery worker
-    max_precip = asyncio.run(fetch_live_precipitation_forecast(test_lat, test_lng))
-    risk_score = calculate_runoff_risk(max_precip)
-    
-    print(f"Forecasted Max Precipitation: {max_precip}mm -> Runoff Risk Score: {risk_score:.2f}")
-    
-    # In a full deployment, this score would be written back to the PostGIS database 
-    # to update the corresponding 1km river segment.
-    return {"max_precip_mm": max_precip, "calculated_risk": risk_score}
+    return {"updated_segments": updates}
 
 @celery_app.task
 def fetch_sewage_spills():

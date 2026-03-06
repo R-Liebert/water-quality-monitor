@@ -19,8 +19,12 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     EA_API_KEY: Optional[str] = None
     
+    POSTGRES_USER: Optional[str] = None
+    POSTGRES_PASSWORD: Optional[str] = None
+    POSTGRES_DB: Optional[str] = None
+    
     OPEN_METEO_URL: str = "https://api.open-meteo.com/v1/forecast"
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 settings = Settings()
