@@ -4,12 +4,12 @@ import json
 
 def download_true_rivers():
     print("Fetching true river geometry using OpenStreetMap Overpass API for a UK region...")
-    # Overpass query: fetch major waterways (rivers) in a larger UK bounding box (Southern and Central England)
+    # Overpass query: fetch major waterways (rivers, canals, streams) in a larger UK bounding box
     overpass_url = "http://overpass-api.de/api/interpreter"
     overpass_query = """
-    [out:json][timeout:90];
+    [out:json][timeout:180];
     (
-      way["waterway"="river"](50.5,-3.5,53.5,1.0);
+      way["waterway"~"river|canal|stream"](50.5,-3.5,53.5,1.0);
     );
     out geom;
     """
