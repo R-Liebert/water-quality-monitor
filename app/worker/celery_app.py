@@ -2,6 +2,8 @@ from celery import Celery
 from celery.schedules import crontab
 from app.core.config import settings
 from app.services.ingest_ea_data import fetch_uk_ea_sewage_spills
+import json
+from datetime import datetime, timedelta
 
 celery_app = Celery(
     "worker",
@@ -39,11 +41,84 @@ def setup_periodic_tasks(sender, **kwargs):
         name='fetch-sewage-spills-hourly'
     )
 
+from app.services.copernicus_service import copernicus_service
+import httpx
+
+async def fetch_copernicus_stats(geom_geojson):
+    token = await copernicus_service.get_token()
+    if not token: return None
+    
+    # Process API endpoint for statistical analysis
+    url = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+    
+    # Evalscript to calculate NDWI and a proxy for Turbidity
+    evalscript = """
+    //VERSION=3
+    function setup() {
+      return {
+        input: ["B03", "B08", "B11"],
+        output: { id: "default", bands: 2 }
+      };
+    }
+    function evaluatePixel(sample) {
+      let ndwi = (sample.B03 - sample.B08) / (sample.B03 + sample.B08);
+      let turbidity = sample.B11; // Simplified proxy for suspended matter
+      return [ndwi, turbidity];
+    }
+    """
+    
+    payload = {
+        "input": {
+            "bounds": { "geometry": json.loads(geom_geojson), "properties": { "crs": "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+            "data": [{ "type": "sentinel-2-l2a", "dataFilter": { "mosaickingOrder": "mostRecent", "maxCloudCoverage": 20 } }]
+        },
+        "aggregation": {
+            "timeRange": { "from": (datetime.now() - timedelta(days=30)).isoformat() + "Z", "to": datetime.now().isoformat() + "Z" },
+            "aggregationInterval": { "of": "P30D" },
+            "evalscript": evalscript
+        }
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
+            if response.status_code == 200:
+                stats = response.json()
+                # Extract mean values
+                data = stats.get('data', [{}])[0].get('outputs', {}).get('default', {}).get('bands', {})
+                return {
+                    "ndwi": data.get('B0', {}).get('stats', {}).get('mean'),
+                    "turbidity": data.get('B1', {}).get('stats', {}).get('mean')
+                }
+        except Exception as e:
+            print(f"Copernicus API Error: {e}")
+    return None
+
+async def run_copernicus_ingestion():
+    print("Connecting to DB for Copernicus update...")
+    async with AsyncSessionLocal() as session:
+        # Sample 20 segments to update per run to stay within API rate limits
+        query = select(WaterwayObservation).limit(20)
+        result = await session.execute(query)
+        observations = result.scalars().all()
+        
+        for obs in observations:
+            # We need the GeoJSON of the segment
+            geom_json = await session.execute(func.ST_AsGeoJSON(obs.geom))
+            stats = await fetch_copernicus_stats(geom_json.scalar())
+            if stats:
+                obs.hydration_index = stats['ndwi']
+                obs.turbidity = stats['turbidity']
+                print(f"Updated {obs.location_name}: NDWI={obs.hydration_index}")
+        
+        await session.commit()
+
 @celery_app.task
 def fetch_copernicus_data():
-    """Mock task for Copernicus ingestion"""
-    print("Ingesting Copernicus satellite data for UK boundaries...")
-    return "Copernicus data processed"
+    """Live task for Copernicus ingestion"""
+    print("Ingesting live Copernicus satellite data...")
+    asyncio.run(run_copernicus_ingestion())
+    return "Copernicus ingestion complete"
 
 import asyncio
 from app.services.ingest_weather import fetch_live_precipitation_forecast, calculate_runoff_risk
