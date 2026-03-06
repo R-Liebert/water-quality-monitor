@@ -147,19 +147,16 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
-        const map = L.map('map', {
-            center: [52.8, -2.0], // UK Center
-            zoom: 6.5,
-            zoomControl: false,
-            renderer: L.canvas() // Essential for rendering 50k+ lines without crashing
-        });
-
-        // High-contrast dark base map to make colored waterways pop
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // Basemaps
+        const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; CARTO',
             subdomains: 'abcd',
             maxZoom: 20
         }).addTo(map);
+
+        const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
+        });
 
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -267,20 +264,21 @@
             layers: 'NDWI',
             format: 'image/png',
             transparent: true,
-            opacity: 0.7,
+            opacity: 0.6,
             attribution: '&copy; Copernicus Sentinel Data'
         });
 
         window.changeBasemap = function(type) {
             if (type === 'dark') {
-                if (map.hasLayer(copernicusNdwiLayer)) {
-                    map.removeLayer(copernicusNdwiLayer);
-                }
+                if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
+                if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
+                darkMap.addTo(map);
             } else if (type === 'ndwi') {
-                if (!map.hasLayer(copernicusNdwiLayer)) {
-                    copernicusNdwiLayer.addTo(map);
-                    copernicusNdwiLayer.bringToBack();
-                }
+                if (map.hasLayer(darkMap)) map.removeLayer(darkMap);
+                satelliteMap.addTo(map);
+                copernicusNdwiLayer.addTo(map);
+                // Ensure river vectors stay on top
+                if (window.geojsonLayer) window.geojsonLayer.bringToFront();
             }
         };
 
