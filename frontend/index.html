@@ -120,8 +120,8 @@
                     Standard Dark Map
                 </label>
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em;">
-                    <input type="radio" name="basemap" value="moisture" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    Moisture Index (Surface Water/Hydration)
+                    <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
+                    NDWI (Surface Water/Hydration)
                 </label>
             </div>
         </div>
@@ -264,12 +264,10 @@
 
         // Background Layer Management
         const copernicusNdwiLayer = L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/f7f1e7e0-7c73-4c88-a8d8-ba2338d2f105', {
-            layers: 'MOISTURE-INDEX',
+            layers: 'NDWI',
             format: 'image/png',
             transparent: true,
             opacity: 0.7,
-            attribution: '&copy; Copernicus Sentinel Data',
-            time: timeParam
             attribution: '&copy; Copernicus Sentinel Data'
         });
 
@@ -278,7 +276,7 @@
                 if (map.hasLayer(copernicusNdwiLayer)) {
                     map.removeLayer(copernicusNdwiLayer);
                 }
-            } else if (type === 'moisture') {
+            } else if (type === 'ndwi') {
                 if (!map.hasLayer(copernicusNdwiLayer)) {
                     copernicusNdwiLayer.addTo(map);
                     copernicusNdwiLayer.bringToBack();
