@@ -247,7 +247,23 @@
             }
         }
 
-        // Load the highly detailed 1km segmented GeoJSON
+        // Load global rivers as a baseline background layer
+        fetch('global_rivers.geojson')
+            .then(response => response.json())
+            .then(data => {
+                L.geoJSON(data, {
+                    style: {
+                        color: '#1e3a8a', // A deep, subtle blue
+                        weight: 1.5,
+                        opacity: 0.6,
+                        smoothFactor: 1.5
+                    },
+                    interactive: false // Don't block hover events for the detailed layers
+                }).addTo(map);
+            })
+            .catch(error => console.error("Error loading global rivers data:", error));
+
+        // Load the highly detailed 1km segmented GeoJSON for the active region (UK)
         fetch('segmented_uk_rivers.geojson')
             .then(response => response.json())
             .then(data => {

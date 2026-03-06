@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from app.core.config import settings
 from app.api.v1.endpoints import waterways, config, copernicus
 
@@ -28,6 +30,9 @@ app.include_router(
     tags=["copernicus"]
 )
 
+# Serve the static frontend files
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Water Quality Monitoring API is running. Access /docs for Swagger UI."}
+    return RedirectResponse(url="/frontend/index.html")
