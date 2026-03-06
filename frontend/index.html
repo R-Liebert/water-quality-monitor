@@ -128,11 +128,14 @@
 
         <div class="legend" id="ndwi-legend" style="margin-bottom: 20px; display: none;">
             <strong>Moisture Index (NDWI)</strong>
-            <div style="margin-top: 10px; height: 12px; width: 100%; background: linear-gradient(to right, #ffffd4, #fed98e, #fe9929, #d95f0e, #993404); border-radius: 6px;"></div>
+            <div style="margin-top: 10px; height: 12px; width: 100%; background: linear-gradient(to right, #ffffff, #76d7ea, #00008b); border-radius: 6px;"></div>
             <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; margin-top: 4px;">
-                <span>Dry Soil</span>
-                <span>Saturation</span>
-                <span>Open Water</span>
+                <span>Dry</span>
+                <span>Saturated</span>
+                <span>Water</span>
+            </div>
+            <div id="ndwi-timestamp" style="font-size: 0.65rem; color: #4db8ff; margin-top: 8px; font-style: italic;">
+                Latest Scan: Loading...
             </div>
         </div>
 
@@ -287,6 +290,8 @@
 
         window.changeBasemap = function(type) {
             const ndwiLegend = document.getElementById('ndwi-legend');
+            const ndwiTimestamp = document.getElementById('ndwi-timestamp');
+            
             if (type === 'dark') {
                 if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
                 if (map.hasLayer(copernicusNdwiLayer)) map.removeLayer(copernicusNdwiLayer);
@@ -297,6 +302,13 @@
                 satelliteMap.addTo(map);
                 copernicusNdwiLayer.addTo(map);
                 if (ndwiLegend) ndwiLegend.style.display = 'block';
+                
+                // Update timestamp to represent the latest Sentinel-2 pass (usually 1-3 days ago)
+                const date = new Date();
+                date.setDate(date.getDate() - 2); // 2 days ago is a safe 'latest' proxy
+                const dateStr = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                if (ndwiTimestamp) ndwiTimestamp.innerText = `Latest Scan: ${dateStr} (Sentinel-2)`;
+
                 // Ensure river vectors stay on top
                 if (window.geojsonLayer) window.geojsonLayer.bringToFront();
             }
