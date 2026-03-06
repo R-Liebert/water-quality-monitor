@@ -263,12 +263,20 @@
         // The carto dark layer was initialized at the top of the script
         
         // Define Copernicus WMS Layer (NDWI for hydration/surface water)
+
+        // Ensure we fetch the most recent data
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setMonth(endDate.getMonth() - 6);
+        const timeParam = `${startDate.toISOString().split('T')[0]}/${endDate.toISOString().split('T')[0]}`;
+
         const copernicusNdwiLayer = L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/f7f1e7e0-7c73-4c88-a8d8-ba2338d2f105', {
             layers: 'NDWI',
             format: 'image/png',
             transparent: true,
             opacity: 0.7,
-            attribution: '&copy; Copernicus Sentinel Data'
+            attribution: '&copy; Copernicus Sentinel Data',
+            TIME: timeParam
         });
 
         window.changeBasemap = function(type) {
