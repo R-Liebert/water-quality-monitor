@@ -220,10 +220,16 @@
                 `;
 
                 layer.bindTooltip(tooltipContent, {
-                    sticky: true,
+                    sticky: false, // Stabilize position so link is clickable
+                    interactive: true, // Allow mouse interaction within the box
                     className: 'leaflet-tooltip-custom',
-                    direction: 'auto',
+                    direction: 'top',
                     opacity: 1
+                });
+
+                // Also bind a permanent popup on click for even easier link access
+                layer.bindPopup(tooltipContent, {
+                    className: 'leaflet-tooltip-custom'
                 });
                 
                 layer.on({
