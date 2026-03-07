@@ -11,7 +11,7 @@ from app.services.ingest_weather import fetch_live_precipitation_forecast, calcu
 from app.db.session import get_session_factory
 from sqlalchemy.ext.asyncio import create_async_engine
 from app.models.waterway import WaterwayObservation
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 
 celery_app = Celery(
     "worker",
@@ -277,9 +277,43 @@ def fetch_weather_and_calculate_risk():
     
     return {"updated_segments": updates}
 
+async def process_spills_and_update_db(session_factory):
+    print("Fetching live EA spills...")
+    incidents = fetch_uk_ea_sewage_spills()
+    
+    if not incidents:
+        print("No active sewage spills found.")
+        return 0
+
+    updates = 0
+    try:
+        async with session_factory() as session:
+            # First, reset all active spills to 0
+            await session.execute(text("UPDATE waterway_observations SET sewage_spill_active = 0"))
+            
+            # Then, update segments near incidents to 1
+            for inc in incidents:
+                lat = inc['lat']
+                lng = inc['lng']
+                # Mark rivers within ~5km (0.05 degrees)
+                query = text("""
+                    UPDATE waterway_observations
+                    SET sewage_spill_active = 1
+                    WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326), 0.05)
+                """)
+                res = await session.execute(query, {"lng": lng, "lat": lat})
+                updates += res.rowcount
+                
+            await session.commit()
+            print(f"Successfully marked {updates} waterway segments as critical due to sewage spills.")
+    except Exception as e:
+        print(f"Failed to update spill data in DB: {e}")
+        
+    return updates
+
 @celery_app.task
 def fetch_sewage_spills():
-    """Task to ingest Environment Agency sewage spill events"""
+    """Task to ingest Environment Agency sewage spill events and update the DB"""
     print("Executing EA sewage spills ingestion task...")
-    result = fetch_uk_ea_sewage_spills()
-    return f"Processed {len(result)} sewage incidents."
+    updates = run_async_with_db(process_spills_and_update_db)
+    return f"Marked {updates} waterway segments as critical due to sewage spills."
