@@ -72,14 +72,14 @@ def get_mock_tile_color(bbox):
 
 @router.get("/wms")
 async def proxy_wms(request: Request):
-    params = dict(request.query_params)
+    params = {k.lower(): v for k, v in request.query_params.items()}
 
     # Parse WMS parameters to build Process API request
-    bbox_str = params.get("BBOX", "")
+    bbox_str = params.get("bbox", "")
     if not bbox_str:
         return Response(content="Missing BBOX parameter", status_code=400)
     
-    crs = params.get("SRS") or params.get("CRS", "EPSG:3857")
+    crs = params.get("srs") or params.get("crs", "EPSG:3857")
     crs_code = crs.split(":")[-1]
     
     try:
@@ -103,15 +103,15 @@ async def proxy_wms(request: Request):
             crs_code = "4326"
     except ValueError:
         return Response(content="Invalid BBOX format", status_code=400)
-    width = int(params.get("WIDTH", 256))
-    height = int(params.get("HEIGHT", 256))
+    width = int(params.get("width", 256))
+    height = int(params.get("height", 256))
     
     token = await copernicus_service.get_token()
     if not token:
         # Fallback to simulated data overlay
         return Response(content=generate_1x1_png(*get_mock_tile_color(orig_bbox)), media_type="image/png")
 
-    layer_name = params.get("LAYERS", "NDWI")
+    layer_name = params.get("layers", "NDWI")
     evalscript = NDWI_EVALSCRIPT if layer_name == "NDWI" else TRUE_COLOR_EVALSCRIPT
 
     time_param = params.get("time")
