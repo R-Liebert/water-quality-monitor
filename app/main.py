@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.endpoints import waterways, config, copernicus
 
@@ -10,6 +11,16 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     description="Professional Water Quality Monitoring System (UK Demo)"
 )
+
+# Set all CORS enabled origins
+if settings.BACKEND_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Include routers
 app.include_router(

@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Water Quality Monitoring API"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
+    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost", "http://localhost:8000", "http://localhost:3000"]
     
     # Postgres
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@db:5432/water_quality"
