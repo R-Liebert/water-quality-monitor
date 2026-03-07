@@ -44,7 +44,7 @@ def setup_periodic_tasks(sender, **kwargs):
 from app.services.copernicus_service import copernicus_service
 import httpx
 
-async def fetch_copernicus_stats(geom_geojson):
+async def fetch_copernicus_stats(geom_geojson, client=None):
     token = await copernicus_service.get_token()
     if not token: return None
     
@@ -79,39 +79,65 @@ async def fetch_copernicus_stats(geom_geojson):
         }
     }
 
-    async with httpx.AsyncClient() as client:
-        try:
+    try:
+        if client is None:
+            async with httpx.AsyncClient() as new_client:
+                response = await new_client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
+        else:
             response = await client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
-            if response.status_code == 200:
-                stats = response.json()
-                # Extract mean values
-                data = stats.get('data', [{}])[0].get('outputs', {}).get('default', {}).get('bands', {})
-                return {
-                    "ndwi": data.get('B0', {}).get('stats', {}).get('mean'),
-                    "turbidity": data.get('B1', {}).get('stats', {}).get('mean')
-                }
-        except Exception as e:
-            print(f"Copernicus API Error: {e}")
+
+        response.raise_for_status()
+        stats = response.json()
+
+        # Extract mean values
+        data = stats.get('data', [{}])[0].get('outputs', {}).get('default', {}).get('bands', {})
+        return {
+            "ndwi": data.get('B0', {}).get('stats', {}).get('mean'),
+            "turbidity": data.get('B1', {}).get('stats', {}).get('mean')
+        }
+    except Exception as e:
+        print(f"Copernicus API Error: {e}")
     return None
 
 async def run_copernicus_ingestion():
     print("Connecting to DB for Copernicus update...")
+    updates = 0
     async with AsyncSessionLocal() as session:
         # Sample 20 segments to update per run to stay within API rate limits
-        query = select(WaterwayObservation).limit(20)
+        # Batch fetching GeoJSON in the same query
+        query = select(
+            WaterwayObservation,
+            func.ST_AsGeoJSON(WaterwayObservation.geom).label('geom_json')
+        ).limit(20)
+
         result = await session.execute(query)
-        observations = result.scalars().all()
+        rows = result.all()
         
-        for obs in observations:
-            # We need the GeoJSON of the segment
-            geom_json = await session.execute(func.ST_AsGeoJSON(obs.geom))
-            stats = await fetch_copernicus_stats(geom_json.scalar())
+        if not rows:
+            print("No waterway segments found to update.")
+            return
+
+        observations = [row[0] for row in rows]
+        geom_jsons = [row.geom_json for row in rows]
+
+        # Fetch Copernicus stats concurrently
+        async with httpx.AsyncClient() as client:
+            stats_results = await asyncio.gather(*[
+                fetch_copernicus_stats(gj, client=client)
+                for gj in geom_jsons
+            ])
+
+        # Apply results
+        for obs, stats in zip(observations, stats_results):
             if stats:
                 obs.hydration_index = stats['ndwi']
                 obs.turbidity = stats['turbidity']
+                updates += 1
                 print(f"Updated {obs.location_name}: NDWI={obs.hydration_index}")
         
-        await session.commit()
+        if updates > 0:
+            await session.commit()
+            print(f"Successfully updated {updates} waterway segments with Copernicus data.")
 
 @celery_app.task
 def fetch_copernicus_data():
@@ -156,10 +182,11 @@ async def process_weather_and_update_db():
 
             # Fetch all unique weather data concurrently
             if unique_coords:
-                weather_results = await asyncio.gather(*[
-                    fetch_live_precipitation_forecast(lat, lng)
-                    for lat, lng in unique_coords
-                ])
+                async with httpx.AsyncClient() as client:
+                    weather_results = await asyncio.gather(*[
+                        fetch_live_precipitation_forecast(lat, lng, client=client)
+                        for lat, lng in unique_coords
+                    ])
                 for i, coords in enumerate(unique_coords):
                     coord_cache[coords] = weather_results[i]
 
