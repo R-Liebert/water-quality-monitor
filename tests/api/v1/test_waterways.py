@@ -10,20 +10,19 @@ def test_read_root():
     assert response.status_code == 307
     assert response.headers["location"] == "/frontend/index.html"
 
-def test_read_waterways_status():
-    from unittest.mock import MagicMock
-    from app.db.session import get_db
-    class AsyncMock:
-        async def execute(self, *args, **kwargs):
-            class MockResult:
-                def scalars(self):
-                    return MagicMock(all=lambda: [])
-            return MockResult()
+from unittest.mock import patch, MagicMock, AsyncMock
+from app.db.session import get_db
 
-    async def override_get_db():
-        yield AsyncMock()
+@patch("app.api.v1.endpoints.waterways.get_db")
+def test_read_waterways_status(mock_get_db):
+    # Mocking db dependency because there is no test db setup easily available
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars().all.return_value = []
+    mock_db.execute.return_value = mock_result
 
-    app.dependency_overrides[get_db] = override_get_db
+    # We use a mocked app dependency to bypass db connection
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
         # Verify the actual API status endpoint
@@ -31,10 +30,6 @@ def test_read_waterways_status():
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
-        # We should have data now because of the sync script
-        if len(data) > 0:
-            assert "location_name" in data[0]
-            assert "hydration_index" in data[0]
-            assert "status" not in data[0] # It's not in our simple demo serializer yet
     finally:
-        app.dependency_overrides.clear()
+        # Clean up the override
+        app.dependency_overrides = {}
