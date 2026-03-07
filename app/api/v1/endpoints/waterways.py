@@ -26,14 +26,9 @@ async def get_high_res_viewport(
     else:
         seg_len = 500     # 500m segments
 
-    # Base filtering condition
-    where_clause = "geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)"
-    if sentinel_only:
-        where_clause += " AND hydration_index IS NOT NULL"
-
     # Raw SQL for heavy spatial lifting in PostGIS
-    # ST_Segmentize uses meters for geographic coordinates (4326)
-    sql = text(f"""
+    # We use ST_MakeEnvelope(min_lng, min_lat, max_lng, max_lat, 4326)
+    sql = text("""
         WITH clipped_rivers AS (
             SELECT 
                 location_name as name, 
@@ -41,7 +36,8 @@ async def get_high_res_viewport(
                 turbidity,
                 ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
             FROM waterway_observations
-            WHERE {where_clause}
+            WHERE geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
+              AND (:sentinel_only = FALSE OR hydration_index IS NOT NULL)
         ),
         segmented AS (
             SELECT 
@@ -62,7 +58,11 @@ async def get_high_res_viewport(
                         'name', name,
                         'hydration_index', hydration_index,
                         'turbidity', turbidity,
-                        'status', 'normal',
+                        'status', CASE 
+                            WHEN hydration_index < 0.2 THEN 'warning'
+                            WHEN hydration_index > 0.8 THEN 'critical'
+                            ELSE 'normal'
+                        END,
                         'risk_score', 0.1,
                         'explanation', 'High-resolution telemetry active.'
                     )
@@ -72,13 +72,17 @@ async def get_high_res_viewport(
         FROM segmented
     """)
     
-    result = await db.execute(sql, {
-        "min_lat": min_lat, "max_lat": max_lat, 
-        "min_lng": min_lng, "max_lng": max_lng,
-        "seg_len": seg_len
-    })
-    
-    return result.scalar() or {"type": "FeatureCollection", "features": []}
+    try:
+        result = await db.execute(sql, {
+            "min_lat": min_lat, "max_lat": max_lat, 
+            "min_lng": min_lng, "max_lng": max_lng,
+            "seg_len": seg_len,
+            "sentinel_only": sentinel_only
+        })
+        return result.scalar() or {"type": "FeatureCollection", "features": []}
+    except Exception as e:
+        print(f"Viewport API Error: {e}")
+        return {"type": "FeatureCollection", "features": []}
 
 @router.get("/status", response_model=list)
 async def read_waterway_status(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):

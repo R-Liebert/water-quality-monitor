@@ -53,7 +53,28 @@ async def proxy_wms(request: Request):
         return Response(content="Authentication Failed", status_code=401)
 
     # Parse WMS parameters to build Process API request
-    bbox = [float(x) for x in params.get("BBOX", "").split(",")]
+    bbox_str = params.get("BBOX", "")
+    if not bbox_str:
+        return Response(content="Missing BBOX parameter", status_code=400)
+    
+    try:
+        bbox = [float(x) for x in bbox_str.split(",")]
+        # If coordinates are very large, they are likely EPSG:3857 (Mercator meters)
+        # We need to unproject them to EPSG:4326 (Degrees) for Copernicus process/stats API
+        if crs == "EPSG:3857" or any(abs(c) > 180 for c in bbox):
+            import math
+            def unproject(x, y):
+                lon = (x / 20037508.34) * 180
+                lat = (y / 20037508.34) * 180
+                lat = 180 / math.pi * (2 * math.atan(math.exp(lat * math.pi / 180)) - math.pi / 2)
+                return lon, lat
+            
+            lon_min, lat_min = unproject(bbox[0], bbox[1])
+            lon_max, lat_max = unproject(bbox[2], bbox[3])
+            bbox = [lon_min, lat_min, lon_max, lat_max]
+            crs_code = "4326"
+    except ValueError:
+        return Response(content="Invalid BBOX format", status_code=400)
     width = int(params.get("WIDTH", 256))
     height = int(params.get("HEIGHT", 256))
     crs = params.get("SRS") or params.get("CRS", "EPSG:3857")
