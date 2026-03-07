@@ -8,7 +8,8 @@ import httpx
 from datetime import datetime, timedelta
 from app.services.copernicus_service import copernicus_service
 from app.services.ingest_weather import fetch_live_precipitation_forecast, calculate_runoff_risk
-from app.db.session import AsyncSessionLocal
+from app.db.session import get_session_factory
+from sqlalchemy.ext.asyncio import create_async_engine
 from app.models.waterway import WaterwayObservation
 from sqlalchemy import select, func
 
@@ -48,8 +49,7 @@ def setup_periodic_tasks(sender, **kwargs):
         name='fetch-sewage-spills-hourly'
     )
 
-async def fetch_copernicus_stats(geom_geojson, client=None):
-    token = await copernicus_service.get_token()
+async def fetch_copernicus_stats(geom_geojson, token, client=None):
     if not token:
         return None
     
@@ -57,28 +57,45 @@ async def fetch_copernicus_stats(geom_geojson, client=None):
     url = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
     
     # Evalscript to calculate NDWI and a proxy for Turbidity
+    # Statistics API REQUIRES dataMask output.
+    # We use named outputs to ensure reliability.
     evalscript = """
     //VERSION=3
     function setup() {
       return {
-        input: ["B03", "B08", "B11"],
-        output: { id: "default", bands: 2 }
+        input: ["B03", "B08", "B11", "dataMask"],
+        output: [
+          { id: "default", bands: 2 },
+          { id: "dataMask", bands: 1 }
+        ]
       };
     }
     function evaluatePixel(sample) {
-      let ndwi = (sample.B03 - sample.B08) / (sample.B03 + sample.B08);
+      let ndwi = (sample.B03 + sample.B08) !== 0 ? (sample.B03 - sample.B08) / (sample.B03 + sample.B08) : 0;
       let turbidity = sample.B11; // Simplified proxy for suspended matter
-      return [ndwi, turbidity];
+      return {
+        default: [ndwi, turbidity],
+        dataMask: [sample.dataMask]
+      };
     }
     """
     
     payload = {
         "input": {
-            "bounds": { "geometry": json.loads(geom_geojson), "properties": { "crs": "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
-            "data": [{ "type": "sentinel-2-l2a", "dataFilter": { "mosaickingOrder": "mostRecent", "maxCloudCoverage": 20 } }]
+            "bounds": { 
+                "geometry": json.loads(geom_geojson),
+                "properties": { "crs": "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } 
+            },
+            "data": [{ 
+                "type": "sentinel-2-l2a", 
+                "dataFilter": { "mosaickingOrder": "mostRecent", "maxCloudCoverage": 20 } 
+            }]
         },
         "aggregation": {
-            "timeRange": { "from": (datetime.now() - timedelta(days=30)).isoformat() + "Z", "to": datetime.now().isoformat() + "Z" },
+            "timeRange": { 
+                "from": (datetime.now() - timedelta(days=30)).isoformat() + "Z", 
+                "to": datetime.now().isoformat() + "Z" 
+            },
             "aggregationInterval": { "of": "P30D" },
             "evalscript": evalscript
         }
@@ -91,84 +108,101 @@ async def fetch_copernicus_stats(geom_geojson, client=None):
         else:
             response = await client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
 
-        response.raise_for_status()
+        if response.status_code != 200:
+            if response.status_code == 429:
+                print("Copernicus API: Rate limit hit (429).")
+            else:
+                print(f"Copernicus API Error ({response.status_code}): {response.text}")
+            return None
+
         stats = response.json()
 
-        # Extract mean values
-        data = stats.get('data', [{}])[0].get('outputs', {}).get('default', {}).get('bands', {})
+        data_points = stats.get('data', [])
+        if not data_points:
+            return None
+            
+        # Extract mean values from 'default' output
+        # With multiple outputs, bands are indexed B0, B1 in the specified output ID
+        bands = data_points[0].get('outputs', {}).get('default', {}).get('bands', {})
         return {
-            "ndwi": data.get('B0', {}).get('stats', {}).get('mean'),
-            "turbidity": data.get('B1', {}).get('stats', {}).get('mean')
+            "ndwi": bands.get('B0', {}).get('stats', {}).get('mean'),
+            "turbidity": bands.get('B1', {}).get('stats', {}).get('mean')
         }
     except Exception as e:
-        print(f"Copernicus API Error: {e}")
+        print(f"Copernicus API Exception: {e}")
     return None
 
-async def run_copernicus_ingestion():
+async def run_copernicus_ingestion(session_factory):
     print("Connecting to DB for Copernicus update...")
+    
+    # Retry token acquisition to handle transient DNS issues
+    token = None
+    for attempt in range(3):
+        token = await copernicus_service.get_token()
+        if token:
+            break
+        print(f"Token acquisition attempt {attempt+1} failed. Retrying in 3s...")
+        await asyncio.sleep(3.0)
+
+    if not token:
+        print("Failed to acquire Copernicus token after retries. Aborting ingestion.")
+        return
+
     updates = 0
-    async with AsyncSessionLocal() as session:
-        # Sample 20 segments to update per run to stay within API rate limits
-        # Batch fetching GeoJSON in the same query
+    async with session_factory() as session:
+        # Reduced batch size to 5 to avoid 429 errors on free tier
         query = select(
             WaterwayObservation,
-            func.ST_AsGeoJSON(WaterwayObservation.geom).label('geom_json')
-        ).limit(20)
+            func.ST_AsGeoJSON(
+                func.ST_SimplifyPreserveTopology(
+                    func.ST_Buffer(WaterwayObservation.geom, 0.0001), 
+                    0.0001
+                )
+            ).label('geom_json')
+        ).where(WaterwayObservation.hydration_index == None).limit(5)
 
         result = await session.execute(query)
         rows = result.all()
         
         if not rows:
-            print("No waterway segments found to update.")
+            print("No new waterway segments found to update.")
             return
 
         observations = [row[0] for row in rows]
         geom_jsons = [row.geom_json for row in rows]
 
-        # Fetch Copernicus stats concurrently
+        # Fetch Copernicus stats sequentially with delay to respect rate limits
         async with httpx.AsyncClient() as client:
-            stats_results = await asyncio.gather(*[
-                fetch_copernicus_stats(gj, client=client)
-                for gj in geom_jsons
-            ])
-
-        # Apply results
-        for obs, stats in zip(observations, stats_results):
-            if stats:
-                obs.hydration_index = stats['ndwi']
-                obs.turbidity = stats['turbidity']
-                updates += 1
-                print(f"Updated {obs.location_name}: NDWI={obs.hydration_index}")
+            for obs, gj in zip(observations, geom_jsons):
+                stats = await fetch_copernicus_stats(gj, token, client=client)
+                if stats:
+                    obs.hydration_index = stats['ndwi']
+                    obs.turbidity = stats['turbidity']
+                    updates += 1
+                    print(f"Updated {obs.location_name}: NDWI={obs.hydration_index}")
+                await asyncio.sleep(2.0) # More breathing room for rate limits
         
         if updates > 0:
             await session.commit()
             print(f"Successfully updated {updates} waterway segments with Copernicus data.")
 
-@celery_app.task
-def fetch_copernicus_data():
-    """Live task for Copernicus ingestion"""
-    print("Ingesting live Copernicus satellite data...")
-    asyncio.run(run_copernicus_ingestion())
-    return "Copernicus ingestion complete"
-
-async def process_weather_and_update_db():
+async def process_weather_and_update_db(session_factory):
     print("Connecting to DB to update weather risk scores...")
     updates = 0
     try:
-        async with AsyncSessionLocal() as session:
+        async with session_factory() as session:
             # For demonstration, limit to 50 segments to respect API limits
+            # Using ST_Centroid because geom is MULTILINESTRING
             query = select(
                 WaterwayObservation, 
-                func.ST_Y(WaterwayObservation.geom).label('lat'), 
-                func.ST_X(WaterwayObservation.geom).label('lng')
+                func.ST_Y(func.ST_Centroid(WaterwayObservation.geom)).label('lat'), 
+                func.ST_X(func.ST_Centroid(WaterwayObservation.geom)).label('lng')
             ).limit(50)
             
             result = await session.execute(query)
             rows = result.all()
             
             # Use a cache to avoid redundant API calls for nearby segments
-            # Weather APIs typically use a grid, so rounding to 2 decimal places (approx 1.1km)
-            # is a safe way to group segments without losing meaningful weather variance.
             coord_cache = {}
             unique_coords = []
 
@@ -210,13 +244,36 @@ async def process_weather_and_update_db():
         
     return updates
 
+def run_async_with_db(async_func):
+    """Helper to run async code in a synchronous Celery task safely with its own loop and engine."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Create engine and session factory inside the new loop
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    session_factory = get_session_factory(engine=engine)
+    
+    try:
+        return loop.run_until_complete(async_func(session_factory))
+    finally:
+        # Clean up engine and loop
+        loop.run_until_complete(engine.dispose())
+        loop.close()
+
+@celery_app.task
+def fetch_copernicus_data():
+    """Live task for Copernicus ingestion"""
+    print("Ingesting live Copernicus satellite data...")
+    run_async_with_db(run_copernicus_ingestion)
+    return "Copernicus ingestion complete"
+
 @celery_app.task
 def fetch_weather_and_calculate_risk():
     """Live task for weather ingestion and risk model"""
     print("Fetching live Open-Meteo precipitation data for agricultural zones...")
     
     # Run the async fetcher and db updater inside the synchronous celery worker
-    updates = asyncio.run(process_weather_and_update_db())
+    updates = run_async_with_db(process_weather_and_update_db)
     
     return {"updated_segments": updates}
 
