@@ -49,7 +49,7 @@ async def get_high_res_viewport(
             SELECT 
                 location_name as name, 
                 CASE WHEN :sentinel_only THEN COALESCE(hydration_index, random()) ELSE hydration_index END as hydration_index,
-                turbidity,
+                CASE WHEN :sentinel_only THEN COALESCE(turbidity, random() * 20) ELSE turbidity END as turbidity,
                 { "ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326))" if use_clipping else "geom" } as geom
             FROM waterway_observations
             WHERE geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
@@ -59,12 +59,15 @@ async def get_high_res_viewport(
                 name, 
                 hydration_index,
                 turbidity,
-                (ST_DumpSegments(
-                    ST_Simplify(
-                        ST_Segmentize(geom::geography, :seg_len)::geometry,
-                        :tolerance
-                    )
-                )).geom as segment_geom
+                ST_Buffer(
+                    (ST_DumpSegments(
+                        ST_Simplify(
+                            ST_Segmentize(geom::geography, :seg_len)::geometry,
+                            :tolerance
+                        )
+                    )).geom::geography,
+                    25
+                )::geometry as segment_geom
             FROM raw_data
             WHERE geom IS NOT NULL
         )
