@@ -292,28 +292,21 @@ async def process_spills_and_update_db(session_factory):
             await session.execute(text("UPDATE waterway_observations SET sewage_spill_active = 0, source_url = NULL"))
             
             # Then, update segments near incidents to 1
-            import json
-
-            incidents_data = []
             for inc in incidents:
+                lat = inc['lat']
+                lng = inc['lng']
+                # Mark rivers within ~5km (0.05 degrees)
+                query = text("""
+                    UPDATE waterway_observations
+                    SET sewage_spill_active = 1,
+                        source_url = :source_url
+                    WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326), 0.05)
+                """)
+                # Construct the source URL based on the EA station reference
                 source_url = f"https://environment.data.gov.uk/flood-monitoring/id/stations/{inc.get('station_reference', '')}" if inc.get('station_reference') else None
-                incidents_data.append({
-                    "lat": inc['lat'],
-                    "lng": inc['lng'],
-                    "source_url": source_url
-                })
-
-            # Mark rivers within ~5km (0.05 degrees) using a bulk update
-            query = text("""
-                UPDATE waterway_observations w
-                SET sewage_spill_active = 1,
-                    source_url = inc.source_url
-                FROM jsonb_to_recordset(CAST(:incidents_json AS jsonb)) AS inc(lat float, lng float, source_url text)
-                WHERE ST_DWithin(w.geom, ST_SetSRID(ST_MakePoint(inc.lng, inc.lat), 4326), 0.05)
-            """)
-
-            res = await session.execute(query, {"incidents_json": json.dumps(incidents_data)})
-            updates += res.rowcount
+                
+                res = await session.execute(query, {"lng": lng, "lat": lat, "source_url": source_url})
+                updates += res.rowcount
                 
             await session.commit()
             print(f"Successfully marked {updates} waterway segments as critical due to sewage spills.")

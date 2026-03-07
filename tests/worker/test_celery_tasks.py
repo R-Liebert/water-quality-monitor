@@ -25,8 +25,6 @@ def mock_dependencies():
     sys.modules["requests"] = MagicMock()
     sys.modules["httpx"] = MagicMock()
     sys.modules["sqlalchemy"] = MagicMock()
-    sys.modules["sqlalchemy.ext"] = MagicMock()
-    sys.modules["sqlalchemy.ext.asyncio"] = MagicMock()
     sys.modules["app.core.config"] = MagicMock()
     sys.modules["app.db.session"] = MagicMock()
     sys.modules["app.models.waterway"] = MagicMock()
@@ -48,17 +46,18 @@ def test_fetch_sewage_spills_task():
     with patch("app.worker.celery_app.fetch_uk_ea_sewage_spills") as mock_fetch:
         # Mock the return value of the EA data fetcher
         mock_fetch.return_value = [
-            {"id": 1, "location": "Thames", "lat": 51.5, "lng": -0.1},
-            {"id": 2, "location": "Avon", "lat": 51.4, "lng": -0.2}
+            {"id": 1, "location": "Thames"},
+            {"id": 2, "location": "Avon"}
         ]
 
         # Call the task directly
-        with patch("app.worker.celery_app.run_async_with_db") as mock_run:
-            mock_run.return_value = 2
-            result = fetch_sewage_spills()
+        result = fetch_sewage_spills()
 
         # Verify the result string
-        assert result == "Marked 2 waterway segments as critical due to sewage spills."
+        assert result == "Processed 2 sewage incidents."
+
+        # Verify the mock was called
+        mock_fetch.assert_called_once()
 
 def test_fetch_sewage_spills_task_empty():
     """Test that fetch_sewage_spills handles empty results correctly."""
@@ -68,8 +67,7 @@ def test_fetch_sewage_spills_task_empty():
         # Mock empty return value
         mock_fetch.return_value = []
 
-        with patch("app.worker.celery_app.run_async_with_db") as mock_run:
-            mock_run.return_value = 0
-            result = fetch_sewage_spills()
+        result = fetch_sewage_spills()
 
-        assert result == "Marked 0 waterway segments as critical due to sewage spills."
+        assert result == "Processed 0 sewage incidents."
+        mock_fetch.assert_called_once()
