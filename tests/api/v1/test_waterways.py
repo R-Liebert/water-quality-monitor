@@ -93,3 +93,28 @@ def test_read_waterways_status_pagination():
         assert isinstance(data, list)
     finally:
         app.dependency_overrides.clear()
+
+def test_read_waterways_viewport_sentinel_only():
+    """Test the viewport endpoint with sentinel_only=True."""
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    
+    # Mocking the scalar result returned by execute().scalar()
+    mock_result.scalar.return_value = {
+        "type": "FeatureCollection",
+        "features": []
+    }
+    mock_session.execute.return_value = mock_result
+
+    app.dependency_overrides[get_db] = lambda: mock_session
+    try:
+        response = client.get(f"{settings.API_V1_STR}/waterways/viewport?min_lat=50.0&max_lat=51.0&min_lng=-1.0&max_lng=0.0&zoom=10&sentinel_only=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["type"] == "FeatureCollection"
+        assert "features" in data
+        
+        # Verify execute was called
+        mock_session.execute.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
