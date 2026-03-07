@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
-import json
 
 from app.db.session import get_db
 from app.models.waterway import WaterwayObservation
@@ -28,7 +27,7 @@ async def get_high_res_viewport(
 
     # Raw SQL for heavy spatial lifting in PostGIS
     # ST_Segmentize uses meters for geographic coordinates (4326)
-    sql = text(f"""
+    sql = text("""
         WITH clipped_rivers AS (
             SELECT location_name as name, ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
             FROM waterway_observations

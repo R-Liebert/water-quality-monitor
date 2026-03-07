@@ -1,10 +1,7 @@
 import json
 import asyncio
-import os
 from sqlalchemy import text
 from app.db.session import AsyncSessionLocal
-from app.models.waterway import WaterwayObservation
-from sqlalchemy import delete
 
 async def ingest_geojson(file_path):
     print(f"Reading {file_path}...")

@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, func
 from geoalchemy2 import Geometry
-from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 class EnvironmentalIncident(Base):

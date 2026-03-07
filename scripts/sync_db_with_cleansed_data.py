@@ -1,14 +1,11 @@
 import json
 import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete
 from geoalchemy2.shape import from_shape
 from shapely.geometry import shape, MultiLineString
 
 from app.db.session import AsyncSessionLocal, engine
 from app.db.base import Base
 from app.models.waterway import WaterwayObservation
-from app.models.incident import EnvironmentalIncident # ensure all models are imported for metadata
 
 async def populate_database_with_cleansed_data():
     """

@@ -3,7 +3,14 @@ from celery.schedules import crontab
 from app.core.config import settings
 from app.services.ingest_ea_data import fetch_uk_ea_sewage_spills
 import json
+import asyncio
+import httpx
 from datetime import datetime, timedelta
+from app.services.copernicus_service import copernicus_service
+from app.services.ingest_weather import fetch_live_precipitation_forecast, calculate_runoff_risk
+from app.db.session import AsyncSessionLocal
+from app.models.waterway import WaterwayObservation
+from sqlalchemy import select, func
 
 celery_app = Celery(
     "worker",
@@ -41,12 +48,10 @@ def setup_periodic_tasks(sender, **kwargs):
         name='fetch-sewage-spills-hourly'
     )
 
-from app.services.copernicus_service import copernicus_service
-import httpx
-
 async def fetch_copernicus_stats(geom_geojson, client=None):
     token = await copernicus_service.get_token()
-    if not token: return None
+    if not token:
+        return None
     
     # Process API endpoint for statistical analysis
     url = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
@@ -146,12 +151,6 @@ def fetch_copernicus_data():
     asyncio.run(run_copernicus_ingestion())
     return "Copernicus ingestion complete"
 
-import asyncio
-from app.services.ingest_weather import fetch_live_precipitation_forecast, calculate_runoff_risk
-from app.db.session import AsyncSessionLocal
-from app.models.waterway import WaterwayObservation
-from sqlalchemy import select, func
-
 async def process_weather_and_update_db():
     print("Connecting to DB to update weather risk scores...")
     updates = 0
@@ -173,7 +172,8 @@ async def process_weather_and_update_db():
             coord_cache = {}
             unique_coords = []
 
-            for _, lat, lng in rows:
+            for row in rows:
+                obs, lat, lng = row
                 if lat and lng:
                     rounded_lat, rounded_lng = round(lat, 2), round(lng, 2)
                     if (rounded_lat, rounded_lng) not in coord_cache:
@@ -190,7 +190,8 @@ async def process_weather_and_update_db():
                 for i, coords in enumerate(unique_coords):
                     coord_cache[coords] = weather_results[i]
 
-            for obs, lat, lng in rows:
+            for row in rows:
+                obs, lat, lng = row
                 if lat and lng:
                     rounded_lat, rounded_lng = round(lat, 2), round(lng, 2)
                     max_precip = coord_cache.get((rounded_lat, rounded_lng), 0.0)

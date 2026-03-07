@@ -1,5 +1,3 @@
-import geopandas as gpd
-from shapely.geometry import LineString
 import json
 
 # Roughly drawing major UK river backbones

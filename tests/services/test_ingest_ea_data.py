@@ -1,8 +1,6 @@
-import pytest
 import requests
 from unittest.mock import patch, MagicMock
 from app.services.ingest_ea_data import fetch_uk_ea_sewage_spills
-from datetime import datetime, timezone
 
 def test_fetch_uk_ea_sewage_spills_success():
     """Test successful data fetching with various item types."""

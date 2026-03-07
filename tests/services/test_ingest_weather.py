@@ -1,10 +1,3 @@
-import sys
-from unittest.mock import MagicMock
-
-# Mock httpx because it's not installed in the environment
-mock_httpx = MagicMock()
-sys.modules["httpx"] = mock_httpx
-
 import pytest
 from app.services.ingest_weather import calculate_runoff_risk
 

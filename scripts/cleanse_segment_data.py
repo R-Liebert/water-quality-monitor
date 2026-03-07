@@ -1,4 +1,3 @@
-import geopandas as gpd
 import json
 import os
 
@@ -54,7 +53,7 @@ def cleanse_segment_data(input_geojson, output_geojson):
     with open(output_geojson, 'w') as f:
         json.dump(cleansed_data, f)
         
-    print(f"Data Cleansing Complete.")
+    print("Data Cleansing Complete.")
     print(f"Removed {removed_count} simulated metric sets.")
     print(f"Verified {len(cleansed_features)} segments now conform to the 'nodata' baseline schema.")
     print(f"Saved clean dataset to {output_geojson}")
