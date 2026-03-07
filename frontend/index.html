@@ -195,13 +195,19 @@
             maxZoom: 20
         });
 
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 6);
+        const timeString = `${startDate.toISOString().split('T')[0]}/${endDate.toISOString().split('T')[0]}`;
+
         const copernicusNdwiLayer = L.tileLayer.wms('/api/v1/copernicus/wms', {
             layers: 'NDWI',
             format: 'image/png',
             transparent: true,
             opacity: 0.6,
             attribution: '&copy; Copernicus Sentinel Data',
-            maxcc: 20
+            maxcc: 20,
+            time: timeString
         });
 
         L.control.zoom({ position: 'bottomright' }).addTo(map);
