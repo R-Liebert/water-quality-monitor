@@ -64,6 +64,18 @@ async def proxy_wms(request: Request):
     layer_name = params.get("LAYERS", "NDWI")
     evalscript = NDWI_EVALSCRIPT if layer_name == "NDWI" else TRUE_COLOR_EVALSCRIPT
 
+    time_param = params.get("time")
+    if time_param and "/" in time_param:
+        time_from, time_to = time_param.split("/")
+        # add "T00:00:00Z" to make it ISO 8601 if it's only YYYY-MM-DD
+        if len(time_from) == 10:
+            time_from += "T00:00:00Z"
+        if len(time_to) == 10:
+            time_to += "T23:59:59Z"
+    else:
+        time_from = (datetime.now() - timedelta(days=180)).isoformat() + "Z"
+        time_to = datetime.now().isoformat() + "Z"
+
     # Build the Process API JSON payload
     payload = {
         "input": {
@@ -75,8 +87,8 @@ async def proxy_wms(request: Request):
                 "type": "sentinel-2-l2a",
                 "dataFilter": {
                     "timeRange": {
-                        "from": (datetime.now() - timedelta(days=30)).isoformat() + "Z",
-                        "to": datetime.now().isoformat() + "Z"
+                        "from": time_from,
+                        "to": time_to
                     },
                     "mosaickingOrder": "mostRecent",
                     "maxCloudCoverage": 20
