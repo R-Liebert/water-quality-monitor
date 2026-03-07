@@ -1,10 +1,10 @@
 import httpx
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-async def fetch_live_precipitation_forecast(lat: float, lng: float) -> float:
+async def fetch_live_precipitation_forecast(lat: float, lng: float, client: Optional[httpx.AsyncClient] = None) -> float:
     """
     Fetches the actual 7-day precipitation forecast for a given coordinate 
     using the free Open-Meteo API. Returns the maximum expected precipitation in mm.
@@ -18,20 +18,24 @@ async def fetch_live_precipitation_forecast(lat: float, lng: float) -> float:
     }
     
     try:
-        async with httpx.AsyncClient() as client:
+        if client is None:
+            async with httpx.AsyncClient() as new_client:
+                response = await new_client.get(url, params=params)
+        else:
             response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+
+        response.raise_for_status()
+        data = response.json()
             
-            # Extract hourly precipitation data
-            precipitation_data = data.get("hourly", {}).get("precipitation", [])
+        # Extract hourly precipitation data
+        precipitation_data = data.get("hourly", {}).get("precipitation", [])
+
+        if not precipitation_data:
+            return 0.0
             
-            if not precipitation_data:
-                return 0.0
-                
-            # For risk calculation, we look at the maximum forecasted precipitation spike
-            max_precip = max(precipitation_data)
-            return max_precip
+        # For risk calculation, we look at the maximum forecasted precipitation spike
+        max_precip = max(precipitation_data)
+        return max_precip
             
     except Exception as e:
         logger.error(f"Failed to fetch weather data for {lat},{lng}: {e}")
