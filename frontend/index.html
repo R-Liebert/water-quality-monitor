@@ -269,14 +269,8 @@
             const zoom = map.getZoom();
             const sentinelOnly = document.getElementById('sentinel-debug').checked;
             
-            // Lower threshold to zoom 10 to support "2km distance" view
-            if (zoom < 10) {
-                if (highResLayer) map.removeLayer(highResLayer);
-                if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
-                document.getElementById('loader').innerText = "Zoom in for live telemetry.";
-                return;
-            }
-            
+            // We now support dynamic segments at ALL zoom levels
+            // Zoom < 8 will show large 2km+ segments for UK-wide view
             const bounds = map.getBounds();
             const url = `/api/v1/waterways/viewport?min_lat=${bounds.getSouth()}&max_lat=${bounds.getNorth()}&min_lng=${bounds.getWest()}&max_lng=${bounds.getEast()}&zoom=${zoom}&sentinel_only=${sentinelOnly}`;
             

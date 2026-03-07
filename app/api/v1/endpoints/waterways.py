@@ -17,26 +17,40 @@ async def get_high_res_viewport(
     """
     Dynamically generates river segments for the current viewport.
     Resolution increases as the user zooms in.
+    Optimized for performance at large scales.
     """
-    # Determine segment length based on zoom (IN METERS for SRID 4326)
+    # Determine segment length and simplification tolerance
+    # seg_len is in METERS for ST_Segmentize geography
+    # tolerance is in DEGREES for ST_Simplify
     if zoom >= 15:
-        seg_len = 25      # 25m segments
+        seg_len = 25
+        tolerance = 0.0
     elif zoom >= 13:
-        seg_len = 100     # 100m segments
+        seg_len = 100
+        tolerance = 0.0001
     elif zoom >= 11:
-        seg_len = 500     # 500m segments
+        seg_len = 500
+        tolerance = 0.0005
+    elif zoom >= 8:
+        seg_len = 2000
+        tolerance = 0.002
     else:
-        seg_len = 2000    # 2km segments
+        # Whole UK or very far out
+        seg_len = 5000
+        tolerance = 0.01
 
-    # Raw SQL for heavy spatial lifting in PostGIS
-    # We use ST_MakeEnvelope(min_lng, min_lat, max_lng, max_lat, 4326)
-    sql = text("""
-        WITH clipped_rivers AS (
+    # Logic: 
+    # 1. For low zoom, don't CLIP (ST_Intersection is expensive). Just filter by BBOX.
+    # 2. For high zoom, CLIP to keep segments manageable.
+    use_clipping = zoom >= 11
+
+    sql_query = f"""
+        WITH raw_data AS (
             SELECT 
                 location_name as name, 
                 hydration_index,
                 turbidity,
-                ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
+                { "ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326))" if use_clipping else "geom" } as geom
             FROM waterway_observations
             WHERE geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
               AND (:sentinel_only = FALSE OR hydration_index IS NOT NULL)
@@ -46,8 +60,13 @@ async def get_high_res_viewport(
                 name, 
                 hydration_index,
                 turbidity,
-                (ST_DumpSegments(ST_Segmentize(geom::geography, :seg_len)::geometry)).geom as segment_geom
-            FROM clipped_rivers
+                (ST_DumpSegments(
+                    ST_Simplify(
+                        ST_Segmentize(geom::geography, :seg_len)::geometry,
+                        :tolerance
+                    )
+                )).geom as segment_geom
+            FROM raw_data
             WHERE geom IS NOT NULL
         )
         SELECT jsonb_build_object(
@@ -72,13 +91,14 @@ async def get_high_res_viewport(
             ), '[]'::jsonb)
         )
         FROM segmented
-    """)
+    """
     
     try:
-        result = await db.execute(sql, {
+        result = await db.execute(text(sql_query), {
             "min_lat": min_lat, "max_lat": max_lat, 
             "min_lng": min_lng, "max_lng": max_lng,
             "seg_len": seg_len,
+            "tolerance": tolerance,
             "sentinel_only": sentinel_only
         })
         return result.scalar() or {"type": "FeatureCollection", "features": []}
