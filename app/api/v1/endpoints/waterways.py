@@ -52,6 +52,7 @@ async def get_high_res_viewport(
                 CASE WHEN :sentinel_only THEN COALESCE(turbidity, abs(hashtext(location_name)) % 100 / 100.0 * 20) ELSE turbidity END as turbidity,
                 sewage_spill_active,
                 runoff_risk_score,
+                source_url,
                 { "ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326))" if use_clipping else "geom" } as geom
             FROM waterway_observations
             WHERE geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
@@ -63,6 +64,7 @@ async def get_high_res_viewport(
                 turbidity,
                 sewage_spill_active,
                 runoff_risk_score,
+                source_url,
                 (ST_DumpSegments(
                     ST_Simplify(
                         ST_Segmentize(geom::geography, :seg_len)::geometry,
@@ -95,7 +97,8 @@ async def get_high_res_viewport(
                             WHEN runoff_risk_score > 0.7 THEN 'High runoff risk.'
                             WHEN :sentinel_only THEN 'High-resolution telemetry active.'
                             ELSE 'Conditions normal.'
-                        END
+                        END,
+                        'source_url', source_url
                     )
                 )
             ), '[]'::jsonb)

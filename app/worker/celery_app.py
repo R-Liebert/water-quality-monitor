@@ -289,7 +289,7 @@ async def process_spills_and_update_db(session_factory):
     try:
         async with session_factory() as session:
             # First, reset all active spills to 0
-            await session.execute(text("UPDATE waterway_observations SET sewage_spill_active = 0"))
+            await session.execute(text("UPDATE waterway_observations SET sewage_spill_active = 0, source_url = NULL"))
             
             # Then, update segments near incidents to 1
             for inc in incidents:
@@ -298,10 +298,14 @@ async def process_spills_and_update_db(session_factory):
                 # Mark rivers within ~5km (0.05 degrees)
                 query = text("""
                     UPDATE waterway_observations
-                    SET sewage_spill_active = 1
+                    SET sewage_spill_active = 1,
+                        source_url = :source_url
                     WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326), 0.05)
                 """)
-                res = await session.execute(query, {"lng": lng, "lat": lat})
+                # Construct the source URL based on the EA station reference
+                source_url = f"https://environment.data.gov.uk/flood-monitoring/id/stations/{inc.get('station_reference', '')}" if inc.get('station_reference') else None
+                
+                res = await session.execute(query, {"lng": lng, "lat": lat, "source_url": source_url})
                 updates += res.rowcount
                 
             await session.commit()

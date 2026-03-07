@@ -19,4 +19,6 @@ class WaterwayObservation(Base):
     runoff_risk_score = Column(Float, nullable=True) # 0.0 to 1.0
     sewage_spill_active = Column(Integer, default=0) # 0 or 1
     
+    source_url = Column(String, nullable=True)
+    
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
