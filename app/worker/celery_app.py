@@ -66,9 +66,32 @@ async def process_weather_and_update_db():
             result = await session.execute(query)
             rows = result.all()
             
+            # Use a cache to avoid redundant API calls for nearby segments
+            # Weather APIs typically use a grid, so rounding to 2 decimal places (approx 1.1km)
+            # is a safe way to group segments without losing meaningful weather variance.
+            coord_cache = {}
+            unique_coords = []
+
+            for _, lat, lng in rows:
+                if lat and lng:
+                    rounded_lat, rounded_lng = round(lat, 2), round(lng, 2)
+                    if (rounded_lat, rounded_lng) not in coord_cache:
+                        coord_cache[(rounded_lat, rounded_lng)] = None
+                        unique_coords.append((rounded_lat, rounded_lng))
+
+            # Fetch all unique weather data concurrently
+            if unique_coords:
+                weather_results = await asyncio.gather(*[
+                    fetch_live_precipitation_forecast(lat, lng)
+                    for lat, lng in unique_coords
+                ])
+                for i, coords in enumerate(unique_coords):
+                    coord_cache[coords] = weather_results[i]
+
             for obs, lat, lng in rows:
                 if lat and lng:
-                    max_precip = await fetch_live_precipitation_forecast(lat, lng)
+                    rounded_lat, rounded_lng = round(lat, 2), round(lng, 2)
+                    max_precip = coord_cache.get((rounded_lat, rounded_lng), 0.0)
                     risk_score = calculate_runoff_risk(max_precip)
                     obs.runoff_risk_score = risk_score
                     updates += 1
