@@ -269,9 +269,11 @@
             const zoom = map.getZoom();
             const sentinelOnly = document.getElementById('sentinel-debug').checked;
             
-            if (zoom < 12) {
+            // Lower threshold to zoom 10 to support "2km distance" view
+            if (zoom < 10) {
                 if (highResLayer) map.removeLayer(highResLayer);
                 if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
+                document.getElementById('loader').innerText = "Zoom in for live telemetry.";
                 return;
             }
             
@@ -285,26 +287,33 @@
                 const response = await fetch(url);
                 const data = await response.json();
                 
-                if (highResLayer) map.removeLayer(highResLayer);
-                
-                // Only use highRes if we actually got features
-                if (data.features && data.features.length > 0) {
-                    if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
-                    highResLayer = L.geoJSON(data, { style: getRiverStyle, onEachFeature: onEachRiver }).addTo(map);
-                    document.getElementById('loader').innerText = `Active: ${data.features.length} segments.`;
-                } else {
-                    // If empty and NOT sentinelOnly, show fallback
-                    if (!sentinelOnly) {
-                        if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
-                        document.getElementById('loader').innerText = "No high-res data here. Showing baseline.";
-                    } else {
+                // Only swap layers if we got a successful response
+                if (data.features) {
+                    if (highResLayer) map.removeLayer(highResLayer);
+                    
+                    if (data.features.length > 0) {
+                        // We have live data, hide baseline
                         if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
-                        document.getElementById('loader').innerText = "No Sentinel segments in this area.";
+                        highResLayer = L.geoJSON(data, { style: getRiverStyle, onEachFeature: onEachRiver }).addTo(map);
+                        document.getElementById('loader').innerText = `Active: ${data.features.length} segments.`;
+                    } else {
+                        // Empty result
+                        if (!sentinelOnly) {
+                            // Show baseline if not specifically looking for sentinel
+                            if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
+                            document.getElementById('loader').innerText = "Showing baseline rivers.";
+                        } else {
+                            // Specifically looking for sentinel and none found
+                            if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
+                            document.getElementById('loader').innerText = "No Sentinel telemetry in this area.";
+                        }
                     }
                 }
             } catch (e) { 
                 console.error("Failed to fetch high-res segments:", e); 
-                document.getElementById('loader').innerText = "API Error. Check console.";
+                document.getElementById('loader').innerText = "Telemetry service unavailable.";
+                // Fallback to baseline on error
+                if (window.geojsonLayer && !map.hasLayer(window.geojsonLayer)) window.geojsonLayer.addTo(map);
             }
         }
         map.on('moveend', updateHighResData);

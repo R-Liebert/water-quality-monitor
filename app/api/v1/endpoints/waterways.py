@@ -23,8 +23,10 @@ async def get_high_res_viewport(
         seg_len = 25      # 25m segments
     elif zoom >= 13:
         seg_len = 100     # 100m segments
-    else:
+    elif zoom >= 11:
         seg_len = 500     # 500m segments
+    else:
+        seg_len = 2000    # 2km segments
 
     # Raw SQL for heavy spatial lifting in PostGIS
     # We use ST_MakeEnvelope(min_lng, min_lat, max_lng, max_lat, 4326)
