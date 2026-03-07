@@ -11,6 +11,7 @@ router = APIRouter()
 async def get_high_res_viewport(
     min_lat: float, max_lat: float, min_lng: float, max_lng: float,
     zoom: int,
+    sentinel_only: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -25,16 +26,29 @@ async def get_high_res_viewport(
     else:
         seg_len = 500     # 500m segments
 
+    # Base filtering condition
+    where_clause = "geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)"
+    if sentinel_only:
+        where_clause += " AND hydration_index IS NOT NULL"
+
     # Raw SQL for heavy spatial lifting in PostGIS
     # ST_Segmentize uses meters for geographic coordinates (4326)
-    sql = text("""
+    sql = text(f"""
         WITH clipped_rivers AS (
-            SELECT location_name as name, ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
+            SELECT 
+                location_name as name, 
+                hydration_index,
+                turbidity,
+                ST_Intersection(geom, ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)) as geom
             FROM waterway_observations
-            WHERE geom && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
+            WHERE {where_clause}
         ),
         segmented AS (
-            SELECT name, (ST_DumpSegments(ST_Segmentize(geom::geography, :seg_len)::geometry)).geom as segment_geom
+            SELECT 
+                name, 
+                hydration_index,
+                turbidity,
+                (ST_DumpSegments(ST_Segmentize(geom::geography, :seg_len)::geometry)).geom as segment_geom
             FROM clipped_rivers
             WHERE geom IS NOT NULL
         )
@@ -46,6 +60,8 @@ async def get_high_res_viewport(
                     'geometry', ST_AsGeoJSON(segment_geom)::jsonb,
                     'properties', jsonb_build_object(
                         'name', name,
+                        'hydration_index', hydration_index,
+                        'turbidity', turbidity,
                         'status', 'normal',
                         'risk_score', 0.1,
                         'explanation', 'High-resolution telemetry active.'

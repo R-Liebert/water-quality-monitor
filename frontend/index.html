@@ -156,6 +156,16 @@
             </div>
         </div>
 
+        <div class="legend" style="margin-bottom: 20px;">
+            <strong>Data Filters</strong>
+            <div style="margin-top: 8px;">
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; color: #4db8ff;">
+                    <input type="checkbox" id="sentinel-debug" onchange="updateHighResData()" style="margin-right: 8px;">
+                    Sentinel Sanity Check (Hide segments without stats)
+                </label>
+            </div>
+        </div>
+
         <div class="legend">
             <strong>Waterway Status Layer</strong>
             <div class="legend-item" style="margin-top:12px;">
@@ -234,6 +244,10 @@
                     <div class="custom-tooltip">
                         <div class="title" style="color: ${titleColor}">${riverName}</div>
                         <div class="metric"><strong>Risk Score:</strong> ${props.risk_score !== null ? (props.risk_score * 100).toFixed(0) + '%' : 'N/A'}</div>
+                        ${props.hydration_index !== null ? `
+                        <div class="metric" style="color: #4db8ff"><strong>Sentinel NDWI:</strong> ${props.hydration_index.toFixed(3)}</div>
+                        <div class="metric" style="color: #4db8ff"><strong>Sentinel Turbidity:</strong> ${props.turbidity.toFixed(1)}</div>
+                        ` : '<div class="metric" style="color: #666"><em>Awaiting satellite pass...</em></div>'}
                         <div class="reason"><strong>Assessment:</strong><br/>${props.explanation}</div>
                         ${props.source_url ? `
                         <div class="reason" style="margin-top: 8px; border-top: 1px solid #333; padding-top: 4px;">
@@ -260,7 +274,8 @@
             }
             if (window.geojsonLayer) map.removeLayer(window.geojsonLayer);
             const bounds = map.getBounds();
-            const url = `/api/v1/waterways/viewport?min_lat=${bounds.getSouth()}&max_lat=${bounds.getNorth()}&min_lng=${bounds.getWest()}&max_lng=${bounds.getEast()}&zoom=${zoom}`;
+            const sentinelOnly = document.getElementById('sentinel-debug').checked;
+            const url = `/api/v1/waterways/viewport?min_lat=${bounds.getSouth()}&max_lat=${bounds.getNorth()}&min_lng=${bounds.getWest()}&max_lng=${bounds.getEast()}&zoom=${zoom}&sentinel_only=${sentinelOnly}`;
             try {
                 const response = await fetch(url);
                 const data = await response.json();
