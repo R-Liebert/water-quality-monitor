@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Response, Request
+from fastapi import APIRouter, Response, Request
 from app.core.config import settings
 from app.services.copernicus_service import copernicus_service
 import httpx
