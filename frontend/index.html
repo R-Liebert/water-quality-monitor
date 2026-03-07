@@ -120,7 +120,7 @@
                 </label>
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em; margin-bottom: 5px;">
                     <input type="radio" name="basemap" value="ndwi" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
-                    Moisture Index (NDWI)
+                    Ground Moisture (NDMI)
                 </label>
                 <label style="display: flex; align-items: center; cursor: pointer; font-size: 0.9em;">
                     <input type="radio" name="basemap" value="dark" onchange="changeBasemap(this.value)" style="margin-right: 8px;">
@@ -130,19 +130,27 @@
         </div>
 
         <div class="legend" id="ndwi-legend" style="margin-bottom: 20px; display: none;">
-            <strong>Moisture Index (NDWI)</strong>
+            <strong>Ground Moisture (NDMI)</strong>
             <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 10px;">
                 <div style="display: flex; align-items: center; font-size: 0.75rem;">
-                    <div style="width: 12px; height: 12px; background: #000080; border-radius: 2px; margin-right: 8px;"></div>
-                    <span>Clear / Deep Water (> 0.5)</span>
+                    <div style="width: 12px; height: 12px; background: rgba(0, 0, 204, 0.7); border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Very High / Water (> 0.4)</span>
                 </div>
                 <div style="display: flex; align-items: center; font-size: 0.75rem;">
-                    <div style="width: 12px; height: 12px; background: #0066cc; border-radius: 2px; margin-right: 8px;"></div>
-                    <span>Shallow / Turbid (0.2 - 0.5)</span>
+                    <div style="width: 12px; height: 12px; background: rgba(0, 153, 153, 0.7); border-radius: 2px; margin-right: 8px;"></div>
+                    <span>High Moisture (0.2 - 0.4)</span>
                 </div>
                 <div style="display: flex; align-items: center; font-size: 0.75rem;">
-                    <div style="width: 12px; height: 12px; background: #33ccff; border-radius: 2px; margin-right: 8px;"></div>
-                    <span>Moist Land / Flood (0.0 - 0.2)</span>
+                    <div style="width: 12px; height: 12px; background: rgba(102, 204, 102, 0.7); border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Moderate Moisture (0.0 - 0.2)</span>
+                </div>
+                <div style="display: flex; align-items: center; font-size: 0.75rem;">
+                    <div style="width: 12px; height: 12px; background: rgba(230, 204, 51, 0.7); border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Low Moisture (-0.2 - 0.0)</span>
+                </div>
+                <div style="display: flex; align-items: center; font-size: 0.75rem;">
+                    <div style="width: 12px; height: 12px; background: rgba(204, 102, 25, 0.7); border-radius: 2px; margin-right: 8px;"></div>
+                    <span>Dry / Bare Soil (< -0.2)</span>
                 </div>
             </div>
             

@@ -59,15 +59,12 @@ async def get_high_res_viewport(
                 name, 
                 hydration_index,
                 turbidity,
-                ST_Buffer(
-                    (ST_DumpSegments(
-                        ST_Simplify(
-                            ST_Segmentize(geom::geography, :seg_len)::geometry,
-                            :tolerance
-                        )
-                    )).geom::geography,
-                    25
-                )::geometry as segment_geom
+                (ST_DumpSegments(
+                    ST_Simplify(
+                        ST_Segmentize(geom::geography, :seg_len)::geometry,
+                        :tolerance
+                    )
+                )).geom as segment_geom
             FROM raw_data
             WHERE geom IS NOT NULL
         )
