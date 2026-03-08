@@ -191,13 +191,12 @@ async def process_weather_and_update_db(session_factory):
     updates = 0
     try:
         async with session_factory() as session:
-            # For demonstration, limit to 50 segments to respect API limits
             # Using ST_Centroid because geom is MULTILINESTRING
             query = select(
                 WaterwayObservation, 
                 func.ST_Y(func.ST_Centroid(WaterwayObservation.geom)).label('lat'), 
                 func.ST_X(func.ST_Centroid(WaterwayObservation.geom)).label('lng')
-            ).limit(50)
+            )
             
             result = await session.execute(query)
             rows = result.all()
@@ -209,25 +208,27 @@ async def process_weather_and_update_db(session_factory):
             for row in rows:
                 obs, lat, lng = row
                 if lat and lng:
-                    rounded_lat, rounded_lng = round(lat, 2), round(lng, 2)
+                    rounded_lat, rounded_lng = round(lat, 0), round(lng, 0)
                     if (rounded_lat, rounded_lng) not in coord_cache:
                         coord_cache[(rounded_lat, rounded_lng)] = None
                         unique_coords.append((rounded_lat, rounded_lng))
 
-            # Fetch all unique weather data concurrently
+            # Fetch all unique weather data sequentially to avoid 429 rate limits
             if unique_coords:
                 async with httpx.AsyncClient() as client:
-                    weather_results = await asyncio.gather(*[
-                        fetch_live_precipitation_forecast(lat, lng, client=client)
-                        for lat, lng in unique_coords
-                    ])
+                    weather_results = []
+                    for lat, lng in unique_coords:
+                        res = await fetch_live_precipitation_forecast(lat, lng, client=client)
+                        weather_results.append(res)
+                        await asyncio.sleep(0.1)  # small delay to prevent rate limit
+                        
                 for i, coords in enumerate(unique_coords):
                     coord_cache[coords] = weather_results[i]
 
             for row in rows:
                 obs, lat, lng = row
                 if lat and lng:
-                    rounded_lat, rounded_lng = round(lat, 2), round(lng, 2)
+                    rounded_lat, rounded_lng = round(lat, 0), round(lng, 0)
                     max_precip = coord_cache.get((rounded_lat, rounded_lng), 0.0)
                     risk_score = calculate_runoff_risk(max_precip)
                     obs.runoff_risk_score = risk_score
